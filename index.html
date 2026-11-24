@@ -1,0 +1,3042 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Сортировка с красными пандами</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Nunito', sans-serif;
+      background: #1d140e;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+    }
+
+    /* Стилизованные игровые кнопки в стиле тёплого дерева, бамбука и золота */
+    .panda-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      font-weight: 800;
+      color: #fff8ef;
+      background: linear-gradient(180deg, #7c4728 0%, #572e17 100%);
+      border: 2px solid #b57345;
+      border-bottom-width: 4px;
+      border-radius: 9999px;
+      box-shadow: 0 6px 16px rgba(20, 10, 4, 0.45), inset 0 1px 1px rgba(255, 230, 195, 0.35);
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.14s ease, opacity 0.2s ease;
+      cursor: pointer;
+    }
+
+    .panda-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      filter: brightness(1.08);
+    }
+
+    .panda-btn:active:not(:disabled) {
+      transform: translateY(2px);
+      border-bottom-width: 2px;
+    }
+
+    .panda-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      filter: grayscale(0.35);
+    }
+
+    .panda-btn-accent {
+      background: linear-gradient(180deg, #e2622c 0%, #b53d12 100%);
+      border-color: #f69d69;
+      box-shadow: 0 6px 18px rgba(190, 62, 18, 0.45), inset 0 1px 1px rgba(255, 240, 220, 0.45);
+    }
+
+    .panda-btn-bamboo {
+      background: linear-gradient(180deg, #5d8c3e 0%, #3d6325 100%);
+      border-color: #96c474;
+      box-shadow: 0 6px 18px rgba(46, 82, 24, 0.45), inset 0 1px 1px rgba(235, 255, 215, 0.4);
+    }
+
+    .panda-btn-gold {
+      background: linear-gradient(180deg, #e09f24 0%, #a86b08 100%);
+      border-color: #ffd573;
+      color: #fffdf7;
+      box-shadow: 0 6px 18px rgba(186, 118, 10, 0.45), inset 0 1px 1px rgba(255, 248, 215, 0.55);
+    }
+
+    .panda-btn-indigo {
+      background: linear-gradient(180deg, #5465b8 0%, #344185 100%);
+      border-color: #96a6f2;
+      box-shadow: 0 6px 18px rgba(42, 54, 122, 0.45), inset 0 1px 1px rgba(225, 232, 255, 0.45);
+    }
+
+    .hud-pill {
+      background: rgba(38, 22, 13, 0.76);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1.5px solid rgba(226, 158, 98, 0.38);
+      box-shadow: 0 6px 20px rgba(15, 7, 2, 0.38);
+    }
+
+    @keyframes popIn {
+      0% { transform: scale(0.78) translateY(16px); opacity: 0; }
+      70% { transform: scale(1.03) translateY(-2px); opacity: 1; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+
+    .modal-pop {
+      animation: popIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    /* Тонкий скроллбар для каталога магазина */
+    .shop-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .shop-scroll::-webkit-scrollbar-track {
+      background: rgba(25, 12, 6, 0.4);
+      border-radius: 999px;
+    }
+    .shop-scroll::-webkit-scrollbar-thumb {
+      background: rgba(212, 140, 78, 0.55);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="relative w-full h-full overflow-hidden">
+
+  <!-- Основной игровой холст -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Верхняя панель статуса (HUD) -->
+  <header class="fixed top-0 left-0 right-0 z-20 pointer-events-none px-2.5 pt-2.5 sm:px-5 sm:pt-3.5">
+    <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+      
+      <!-- Левая группа: Уровень, Звёзды и Монеты -->
+      <div class="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
+        <div class="hud-pill rounded-full px-3 py-1 sm:px-3.5 sm:py-1.5 flex items-center gap-1.5 text-amber-50">
+          <span class="text-base sm:text-lg">🐾</span>
+          <div>
+            <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-amber-200/80 font-bold leading-none">Уровень</div>
+            <div id="levelDisplay" class="text-sm sm:text-base font-black leading-tight text-amber-100">1</div>
+          </div>
+        </div>
+
+        <div class="hud-pill rounded-full px-3 py-1 sm:px-3.5 sm:py-1.5 flex items-center gap-1.5 text-amber-50" title="Всего звёзд">
+          <span class="text-base sm:text-lg">⭐</span>
+          <div>
+            <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-amber-200/80 font-bold leading-none">Звёзды</div>
+            <div id="totalStarsDisplay" class="text-sm sm:text-base font-black leading-tight text-yellow-300">0</div>
+          </div>
+        </div>
+
+        <div id="coinsHudPill" class="hud-pill rounded-full px-3 py-1 sm:px-3.5 sm:py-1.5 flex items-center gap-1.5 text-amber-50 transition-transform duration-200" title="Баланс монет">
+          <span class="text-base sm:text-lg">🪙</span>
+          <div>
+            <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-amber-200/80 font-bold leading-none">Монеты</div>
+            <div id="coinsDisplay" class="text-sm sm:text-base font-black leading-tight text-amber-300">120</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Центральная группа: Шкала звёзд за уровень и счётчик ходов -->
+      <div class="hud-pill rounded-full px-3 py-1 sm:px-4 sm:py-1.5 flex items-center gap-2.5 sm:gap-3.5 pointer-events-auto">
+        <div class="flex items-center gap-0.5 sm:gap-1" id="liveStarsContainer" title="Звёзды за текущий уровень">
+          <span class="star-icon text-base sm:text-xl transition-transform duration-300 drop-shadow">⭐</span>
+          <span class="star-icon text-base sm:text-xl transition-transform duration-300 drop-shadow">⭐</span>
+          <span class="star-icon text-base sm:text-xl transition-transform duration-300 drop-shadow">⭐</span>
+        </div>
+        <div class="h-5 w-px bg-amber-200/20"></div>
+        <div class="text-right">
+          <div class="text-[9px] sm:text-[10px] uppercase tracking-wider text-amber-200/80 font-bold leading-none">Ходы</div>
+          <div class="text-xs sm:text-sm font-black text-amber-50 leading-tight">
+            <span id="movesDisplay">0</span> <span class="text-amber-300/75 text-[11px] font-bold">/ <span id="parDisplay">12</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Правая группа: Магазин и Звук -->
+      <div class="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
+        <button id="openShopBtn" class="panda-btn panda-btn-gold px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm">
+          <span class="text-base sm:text-lg">🏮</span>
+          <span>Магазин</span>
+        </button>
+
+        <button id="soundToggleBtn" class="hud-pill rounded-full w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-amber-100 hover:bg-amber-900/60 transition active:scale-95" title="Включить или выключить звук" aria-label="Звук">
+          <span id="soundIcon" class="text-base sm:text-lg">🔊</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Всплывающая подсказка / уведомление без alert() -->
+  <div id="toastBanner" class="fixed top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none opacity-0 transition-all duration-300">
+    <div id="toastText" class="hud-pill text-amber-50 font-bold text-xs sm:text-sm px-4 py-2 rounded-full shadow-xl border border-amber-300/40 whitespace-nowrap">
+      Подсказка
+    </div>
+  </div>
+
+  <!-- Нижняя панель управления и бустеров -->
+  <footer class="fixed bottom-0 left-0 right-0 z-20 pointer-events-none px-2 pb-2.5 sm:px-5 sm:pb-4">
+    <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 pointer-events-auto">
+      
+      <!-- Отмена хода -->
+      <button id="undoBtn" class="panda-btn px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm" disabled title="Отменить последний ход">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+        <span>Назад</span>
+        <span id="undoBadge" class="bg-amber-950/75 text-amber-200 text-[10px] px-1.5 py-0.5 rounded-full">0</span>
+      </button>
+
+      <!-- Перезапуск уровня -->
+      <button id="restartBtn" class="panda-btn px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm" title="Начать уровень заново">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        <span class="hidden sm:inline">Заново</span>
+      </button>
+
+      <!-- Бустер: Подсказка -->
+      <button id="hintBtn" class="panda-btn panda-btn-gold px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm" title="Подсветить выгодный ход">
+        <span>💡 Подсказка</span>
+        <span id="hintCostBadge" class="bg-amber-950/75 text-amber-200 text-[10px] px-1.5 py-0.5 rounded-full">Беспл.</span>
+      </button>
+
+      <!-- Бустер: Перемешать -->
+      <button id="shuffleBtn" class="panda-btn panda-btn-indigo px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm" title="Перемешать незавершённые слои">
+        <span>🌪️ Микс</span>
+        <span id="shuffleCostBadge" class="bg-indigo-950/75 text-indigo-100 text-[10px] px-1.5 py-0.5 rounded-full">Беспл.</span>
+      </button>
+
+      <!-- Бустер: +1 Пустая колба -->
+      <button id="extraBottleBtn" class="panda-btn panda-btn-bamboo px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm" title="Добавить пустую колбу">
+        <span>+ Колба</span>
+        <span id="extraBottleBadge" class="bg-green-950/75 text-lime-200 text-[10px] px-1.5 py-0.5 rounded-full">Беспл.</span>
+      </button>
+
+      <!-- Новый уровень -->
+      <button id="newLevelBtn" class="panda-btn panda-btn-accent px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm" title="Сгенерировать новый уровень">
+        <span class="hidden md:inline">Новый</span>
+        <span>➜</span>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Модальное окно Магазина -->
+  <div id="shopModal" class="fixed inset-0 z-40 hidden items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-sm">
+    <div class="modal-pop relative w-full max-w-3xl max-h-[88vh] flex flex-col rounded-3xl border-2 border-amber-300/60 shadow-2xl overflow-hidden"
+         style="background: radial-gradient(circle at top, #573019 0%, #261308 100%);">
+      
+      <!-- Шапка магазина -->
+      <div class="flex items-center justify-between px-5 py-4 border-b border-amber-200/20 bg-black/20">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl sm:text-3xl">🏮</span>
+          <div>
+            <h2 class="text-lg sm:text-2xl font-black text-amber-50 leading-tight">Лавка Красной Панды</h2>
+            <p class="text-xs text-amber-200/80 font-semibold">Украсьте колбы, лес и пригласите новых панд</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2.5">
+          <div class="hud-pill rounded-full px-3.5 py-1.5 flex items-center gap-1.5">
+            <span class="text-base sm:text-lg">🪙</span>
+            <span id="shopCoinsDisplay" class="text-sm sm:text-base font-black text-amber-300">120</span>
+          </div>
+          <button id="closeShopBtn" class="w-9 h-9 rounded-full bg-amber-950/80 border border-amber-300/40 text-amber-100 hover:bg-amber-800 flex items-center justify-center font-black text-lg transition active:scale-95" aria-label="Закрыть магазин">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Вкладки магазина -->
+      <div class="flex items-center gap-2 px-5 pt-3.5 pb-2 border-b border-amber-200/10">
+        <button data-shop-tab="bottles" class="shop-tab-btn panda-btn panda-btn-accent px-4 py-2 text-xs sm:text-sm">
+          🧪 Бутылки
+        </button>
+        <button data-shop-tab="backgrounds" class="shop-tab-btn panda-btn px-4 py-2 text-xs sm:text-sm">
+          🏞️ Фоны
+        </button>
+        <button data-shop-tab="pandas" class="shop-tab-btn panda-btn px-4 py-2 text-xs sm:text-sm">
+          🐾 Панды
+        </button>
+      </div>
+
+      <!-- Сетка товаров -->
+      <div id="shopItemsGrid" class="shop-scroll flex-1 overflow-y-auto p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+        <!-- Карточки генерируются динамически через JS с мини-Canvas превью -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно победы на уровне -->
+  <div id="winModal" class="fixed inset-0 z-40 hidden items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div class="modal-pop relative w-full max-w-md rounded-3xl p-6 sm:p-8 text-center border-2 border-amber-300/60 shadow-2xl"
+         style="background: radial-gradient(circle at top, #5d331a 0%, #2d170b 100%);">
+      
+      <!-- Декоративные ушки красной панды сверху окна -->
+      <div class="absolute -top-6 left-1/2 -translate-x-1/2 flex items-center gap-16 pointer-events-none">
+        <div class="w-10 h-10 rounded-tl-2xl rounded-tr-full rounded-bl-full bg-[#c94a1d] border-2 border-amber-200/70 -rotate-12 flex items-center justify-center">
+          <div class="w-5 h-5 rounded-full bg-[#fff5e8]"></div>
+        </div>
+        <div class="w-10 h-10 rounded-tr-2xl rounded-tl-full rounded-br-full bg-[#c94a1d] border-2 border-amber-200/70 rotate-12 flex items-center justify-center">
+          <div class="w-5 h-5 rounded-full bg-[#fff5e8]"></div>
+        </div>
+      </div>
+
+      <div class="text-xs uppercase tracking-widest font-extrabold text-amber-300/90 mb-1">Уровень пройден!</div>
+      <h2 class="text-2xl sm:text-3xl font-black text-amber-50 mb-3">Панды в восторге! 🐾</h2>
+
+      <!-- Звёзды награды -->
+      <div id="modalStars" class="flex items-center justify-center gap-3 my-3">
+        <span class="text-4xl sm:text-5xl drop-shadow-lg">⭐</span>
+        <span class="text-4xl sm:text-5xl drop-shadow-lg">⭐</span>
+        <span class="text-4xl sm:text-5xl drop-shadow-lg">⭐</span>
+      </div>
+
+      <!-- Начисленные монеты -->
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-950/75 border border-amber-400/40 mb-3">
+        <span class="text-xl">🪙</span>
+        <span id="modalCoinsReward" class="text-base sm:text-lg font-black text-amber-300">+35 монет</span>
+      </div>
+
+      <p id="modalStatsText" class="text-amber-100/90 text-sm sm:text-base font-semibold mb-6">
+        Вы справились за 10 ходов!
+      </p>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <button id="modalReplayBtn" class="panda-btn w-full sm:w-auto px-5 py-3 text-sm">
+          Ещё раз
+        </button>
+        <button id="modalNextBtn" class="panda-btn panda-btn-accent w-full sm:w-auto px-6 py-3 text-sm sm:text-base">
+          Следующий уровень ➜
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * СОРТИРОВКА С КРАСНЫМИ ПАНДАМИ (Red Panda Water Sort Puzzle)
+     * Полностью автономный движок с физикой жидкости, экономикой монет, магазином
+     * скинов (бутылки, фоны, новые персонажи панд) и вспомогательными бустерами.
+     * ============================================================================
+     */
+
+    (() => {
+      'use strict';
+
+      // --- КОНСТАНТЫ И ПАЛИТРА ЦВЕТОВ ---
+      const BOTTLE_CAPACITY = 4;
+      const STORAGE_KEY = 'redPandaWaterSortSave_v2';
+
+      // Природная палитра жидкостей с градиентами и бликами
+      const LIQUID_PALETTE = [
+        { id: 'rust',      name: 'Рыжая панда', top: '#ff7d47', mid: '#e04f1d', bottom: '#a62c08', foam: '#ffc2a6' },
+        { id: 'matcha',    name: 'Бамбук',      top: '#9be066', mid: '#63b032', bottom: '#397317', foam: '#d9f7be' },
+        { id: 'amber',     name: 'Хурма',       top: '#ffc94d', mid: '#e89611', bottom: '#a85f00', foam: '#fff0b3' },
+        { id: 'berry',     name: 'Ежевика',     top: '#c77dff', mid: '#8e3fd4', bottom: '#53198a', foam: '#ebd1ff' },
+        { id: 'sky',       name: 'Горный ручей',top: '#63d2ff', mid: '#1f9ce0', bottom: '#0d5e96', foam: '#c7f0ff' },
+        { id: 'sakura',    name: 'Сакура',      top: '#ff8fb1', mid: '#e04877', bottom: '#9c1c45', foam: '#ffd1df' },
+        { id: 'honey',     name: 'Лесной мёд',  top: '#f4a261', mid: '#c86d2d', bottom: '#7f3b0e', foam: '#fae0c8' },
+        { id: 'teal',      name: 'Нефрит',      top: '#4fd1c5', mid: '#23968b', bottom: '#115952', foam: '#c4f7f2' }
+      ];
+
+      // --- КАТАЛОГ МАГАЗИНА ---
+      const SHOP_CATALOG = {
+        bottles: [
+          {
+            id: 'classic_panda',
+            name: 'Колба «Красная панда»',
+            desc: 'Стеклянная колба с милыми ушками и гравировкой лапки.',
+            price: 0
+          },
+          {
+            id: 'bamboo_vessel',
+            name: 'Бамбуковый сосуд',
+            desc: 'Резной стебель зелёного бамбука со свежими листочками.',
+            price: 80
+          },
+          {
+            id: 'sakura_lantern',
+            name: 'Фонарик Сакуры',
+            desc: 'Изящная пузатая колба с золотыми ободками и цветком.',
+            price: 150
+          },
+          {
+            id: 'royal_crystal',
+            name: 'Хрустальный кувшин',
+            desc: 'Гранёный хрусталь с золотыми ушками и короной.',
+            price: 240
+          }
+        ],
+        backgrounds: [
+          {
+            id: 'autumn_forest',
+            name: 'Осенний бамбуковый лес',
+            desc: 'Тёплое золото солнца, бамбук и падающие кленовые листья.',
+            price: 0
+          },
+          {
+            id: 'night_lanterns',
+            name: 'Ночной сад с фонариками',
+            desc: 'Глубокое звёздное небо, луна, бумажные фонарики и светлячки.',
+            price: 100
+          },
+          {
+            id: 'sakura_waterfall',
+            name: 'Весенняя сакура и водопад',
+            desc: 'Нежный рассвет, горный водопад и вихрь розовых лепестков.',
+            price: 180
+          },
+          {
+            id: 'winter_onsen',
+            name: 'Зимний горячий источник',
+            desc: 'Заснеженный бамбук, падающие снежинки и тёплый пар.',
+            price: 260
+          }
+        ],
+        pandas: [
+          {
+            id: 'forest_cubs',
+            name: 'Лесные малыши',
+            desc: 'Классические любопытные красные панды на ветках.',
+            price: 0
+          },
+          {
+            id: 'samurai_tea',
+            name: 'Панда-самурай и мастер чая',
+            desc: 'В плетёной шляпе каса, с шарфом и бамбуковой флейтой.',
+            price: 120
+          },
+          {
+            id: 'star_pandas',
+            name: 'Звёздные панды',
+            desc: 'В синих шарфиках со звёздами и сияющими золотыми ушками.',
+            price: 200
+          },
+          {
+            id: 'royal_panda',
+            name: 'Королевская династия',
+            desc: 'В золотых коронах, бархатных мантиях и с драгоценностями.',
+            price: 300
+          }
+        ]
+      };
+
+      // --- СТОИМОСТЬ БУСТЕРОВ (1-й раз на уровне бесплатно, далее за монеты) ---
+      const BOOSTER_COSTS = {
+        hint: 20,
+        shuffle: 30,
+        extraBottle: 45
+      };
+
+      // --- ЗВУКОВОЙ СИНТЕЗАТОР (Web Audio API) ---
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.muted = false;
+        }
+
+        ensureContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+
+        toggleMute() {
+          this.muted = !this.muted;
+          return this.muted;
+        }
+
+        playSelect(pitchFactor = 1) {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(680 * pitchFactor, now);
+          osc.frequency.exponentialRampToValueAtTime(1020 * pitchFactor, now + 0.08);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.17);
+        }
+
+        playDeselect() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(340, now + 0.09);
+
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        }
+
+        playCoin() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          [987.77, 1318.51].forEach((freq, i) => {
+            const t = now + i * 0.07;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.15, t + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.26);
+          });
+        }
+
+        playMagic() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const freqs = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+          freqs.forEach((f, i) => {
+            const t = now + i * 0.045;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(f, t);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.11, t + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.3);
+          });
+        }
+
+        playPour(duration = 0.55, fillRatio = 0.5) {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufferSize) * Math.PI);
+          }
+
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.Q.value = 4.5;
+          const baseFreq = 380 + fillRatio * 340;
+          filter.frequency.setValueAtTime(baseFreq, now);
+          filter.frequency.linearRampToValueAtTime(baseFreq + 260, now + duration);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.01, now);
+          gain.gain.linearRampToValueAtTime(0.16, now + 0.08);
+          gain.gain.setValueAtTime(0.14, now + duration - 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          noise.start(now);
+          noise.stop(now + duration);
+
+          const bubbleCount = 4;
+          for (let i = 0; i < bubbleCount; i++) {
+            const t = now + (duration * (i + 0.5)) / (bubbleCount + 0.5);
+            const bOsc = this.ctx.createOscillator();
+            const bGain = this.ctx.createGain();
+            bOsc.type = 'sine';
+            const startF = 320 + i * 95 + fillRatio * 180;
+            bOsc.frequency.setValueAtTime(startF, t);
+            bOsc.frequency.exponentialRampToValueAtTime(startF * 1.65, t + 0.065);
+
+            bGain.gain.setValueAtTime(0.001, t);
+            bGain.gain.linearRampToValueAtTime(0.07, t + 0.015);
+            bGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+
+            bOsc.connect(bGain);
+            bGain.connect(this.ctx.destination);
+            bOsc.start(t);
+            bOsc.stop(t + 0.075);
+          }
+        }
+
+        playBottleComplete() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const popOsc = this.ctx.createOscillator();
+          const popGain = this.ctx.createGain();
+          popOsc.type = 'sine';
+          popOsc.frequency.setValueAtTime(190, now);
+          popOsc.frequency.exponentialRampToValueAtTime(560, now + 0.07);
+          popGain.gain.setValueAtTime(0.22, now);
+          popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          popOsc.connect(popGain);
+          popGain.connect(this.ctx.destination);
+          popOsc.start(now);
+          popOsc.stop(now + 0.1);
+
+          const notes = [587.33, 739.99, 880, 1174.66];
+          notes.forEach((freq, idx) => {
+            const t = now + 0.04 + idx * 0.055;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.11, t + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.36);
+          });
+        }
+
+        playWin() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const melody = [
+            { f: 523.25, t: 0.00, d: 0.18 },
+            { f: 659.25, t: 0.12, d: 0.18 },
+            { f: 783.99, t: 0.24, d: 0.18 },
+            { f: 1046.5, t: 0.38, d: 0.55 }
+          ];
+          melody.forEach(n => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(n.f, now + n.t);
+            gain.gain.setValueAtTime(0.001, now + n.t);
+            gain.gain.linearRampToValueAtTime(0.16, now + n.t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + n.t);
+            osc.stop(now + n.t + n.d + 0.02);
+          });
+        }
+      }
+
+      const sound = new SoundEngine();
+
+      // --- УТИЛИТЫ ПЛАВНОСТИ ---
+      function easeInOutCubic(t) {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      }
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+      function clamp(val, min, max) {
+        return Math.max(min, Math.min(max, val));
+      }
+
+      // --- DOM ЭЛЕМЕНТЫ ---
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const levelDisplay = document.getElementById('levelDisplay');
+      const totalStarsDisplay = document.getElementById('totalStarsDisplay');
+      const coinsDisplay = document.getElementById('coinsDisplay');
+      const coinsHudPill = document.getElementById('coinsHudPill');
+      const movesDisplay = document.getElementById('movesDisplay');
+      const parDisplay = document.getElementById('parDisplay');
+      const liveStarsContainer = document.getElementById('liveStarsContainer');
+
+      const undoBtn = document.getElementById('undoBtn');
+      const undoBadge = document.getElementById('undoBadge');
+      const restartBtn = document.getElementById('restartBtn');
+      const hintBtn = document.getElementById('hintBtn');
+      const hintCostBadge = document.getElementById('hintCostBadge');
+      const shuffleBtn = document.getElementById('shuffleBtn');
+      const shuffleCostBadge = document.getElementById('shuffleCostBadge');
+      const extraBottleBtn = document.getElementById('extraBottleBtn');
+      const extraBottleBadge = document.getElementById('extraBottleBadge');
+      const newLevelBtn = document.getElementById('newLevelBtn');
+      const soundToggleBtn = document.getElementById('soundToggleBtn');
+      const soundIcon = document.getElementById('soundIcon');
+
+      const toastBanner = document.getElementById('toastBanner');
+      const toastText = document.getElementById('toastText');
+
+      const openShopBtn = document.getElementById('openShopBtn');
+      const closeShopBtn = document.getElementById('closeShopBtn');
+      const shopModal = document.getElementById('shopModal');
+      const shopCoinsDisplay = document.getElementById('shopCoinsDisplay');
+      const shopItemsGrid = document.getElementById('shopItemsGrid');
+      const shopTabBtns = document.querySelectorAll('.shop-tab-btn');
+
+      const winModal = document.getElementById('winModal');
+      const modalStars = document.getElementById('modalStars');
+      const modalCoinsReward = document.getElementById('modalCoinsReward');
+      const modalStatsText = document.getElementById('modalStatsText');
+      const modalReplayBtn = document.getElementById('modalReplayBtn');
+      const modalNextBtn = document.getElementById('modalNextBtn');
+
+      let toastTimer = null;
+      function showToast(msg) {
+        toastText.textContent = msg;
+        toastBanner.classList.remove('opacity-0', '-translate-y-2');
+        toastBanner.classList.add('opacity-100', 'translate-y-0');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toastBanner.classList.remove('opacity-100', 'translate-y-0');
+          toastBanner.classList.add('opacity-0', '-translate-y-2');
+        }, 2200);
+      }
+
+      // --- СОХРАНЕНИЕ ПРОГРЕССА И ПОКУПОК ---
+      function loadSaveData() {
+        const defaults = {
+          level: 1,
+          totalStars: 0,
+          coins: 120,
+          unlocked: {
+            bottles: ['classic_panda'],
+            backgrounds: ['autumn_forest'],
+            pandas: ['forest_cubs']
+          },
+          equipped: {
+            bottles: 'classic_panda',
+            backgrounds: 'autumn_forest',
+            pandas: 'forest_cubs'
+          }
+        };
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return defaults;
+          const parsed = JSON.parse(raw);
+          return {
+            level: Math.max(1, Number(parsed.level) || 1),
+            totalStars: Math.max(0, Number(parsed.totalStars) || 0),
+            coins: Math.max(0, Number(parsed.coins) ?? 120),
+            unlocked: {
+              bottles: Array.isArray(parsed.unlocked?.bottles) ? parsed.unlocked.bottles : ['classic_panda'],
+              backgrounds: Array.isArray(parsed.unlocked?.backgrounds) ? parsed.unlocked.backgrounds : ['autumn_forest'],
+              pandas: Array.isArray(parsed.unlocked?.pandas) ? parsed.unlocked.pandas : ['forest_cubs']
+            },
+            equipped: {
+              bottles: parsed.equipped?.bottles || 'classic_panda',
+              backgrounds: parsed.equipped?.backgrounds || 'autumn_forest',
+              pandas: parsed.equipped?.pandas || 'forest_cubs'
+            }
+          };
+        } catch (e) {
+          return defaults;
+        }
+      }
+
+      const saveData = loadSaveData();
+
+      function persistSaveData() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
+        } catch (e) {
+          // Игнорируем ошибку, если localStorage недоступен
+        }
+      }
+
+      // --- СОСТОЯНИЕ ИГРЫ ---
+      let width = window.innerWidth;
+      let height = window.innerHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      const gameState = {
+        level: saveData.level,
+        moves: 0,
+        parMoves: 10,
+        bottles: [],
+        initialSnapshot: [],
+        history: [],
+        selectedIndex: -1,
+        won: false,
+        activePour: null,
+        activeHint: null, // { fromIdx, toIdx, timer }
+        boosterUses: {
+          hint: 0,
+          shuffle: 0,
+          extraBottle: 0
+        },
+        particles: [],
+        ambientParticles: [],
+        lanterns: [],
+        sunbeams: [],
+        bambooStalks: [],
+        pandas: [],
+        bottleGeom: { w: 56, h: 175 },
+        currentShopTab: 'bottles'
+      };
+
+      // --- ИНИЦИАЛИЗАЦИЯ ОКРУЖЕНИЯ, ЛОКАЦИЙ И КРАСНЫХ ПАНД ---
+      function initScenery() {
+        gameState.sunbeams = Array.from({ length: 5 }, (_, i) => ({
+          xRatio: 0.15 + i * 0.18,
+          widthRatio: 0.08 + (i % 3) * 0.04,
+          angle: 0.22 + (i % 2) * 0.06,
+          phase: i * 1.4,
+          alpha: 0.06 + (i % 2) * 0.03
+        }));
+
+        gameState.bambooStalks = [];
+        const stalkCount = 14;
+        for (let i = 0; i < stalkCount; i++) {
+          const isForeground = i % 3 === 0;
+          gameState.bambooStalks.push({
+            xRatio: (i / (stalkCount - 1)) * 1.04 - 0.02,
+            width: isForeground ? 18 + (i % 4) * 4 : 9 + (i % 3) * 3,
+            swaySpeed: 0.6 + (i % 5) * 0.15,
+            swayPhase: i * 0.9,
+            swayAmp: isForeground ? 10 : 5,
+            layer: isForeground ? 1 : 0
+          });
+        }
+
+        // Бумажные фонарики для ночного сада
+        gameState.lanterns = [
+          { xRatio: 0.18, yRatio: 0.15, scale: 0.9, phase: 0.3 },
+          { xRatio: 0.34, yRatio: 0.11, scale: 0.72, phase: 1.7 },
+          { xRatio: 0.68, yRatio: 0.12, scale: 0.78, phase: 2.8 },
+          { xRatio: 0.83, yRatio: 0.16, scale: 0.95, phase: 4.1 }
+        ];
+
+        resetAmbientParticles();
+
+        // Три анимированные красные панды в окружении
+        gameState.pandas = [
+          {
+            id: 'left_panda',
+            anchorX: 0.11,
+            anchorY: 0.27,
+            scale: 0.92,
+            flip: 1,
+            blinkTimer: 2.2,
+            isBlinking: false,
+            tailPhase: 0.4,
+            cheerTimer: 0,
+            earTwitch: 0,
+            pose: 'branch'
+          },
+          {
+            id: 'right_panda',
+            anchorX: 0.89,
+            anchorY: 0.29,
+            scale: 0.95,
+            flip: -1,
+            blinkTimer: 3.7,
+            isBlinking: false,
+            tailPhase: 2.1,
+            cheerTimer: 0,
+            earTwitch: 0,
+            pose: 'branch'
+          },
+          {
+            id: 'bottom_panda',
+            anchorX: 0.09,
+            anchorY: 0.84,
+            scale: 0.85,
+            flip: 1,
+            blinkTimer: 1.5,
+            isBlinking: false,
+            tailPhase: 4.0,
+            cheerTimer: 0,
+            earTwitch: 0,
+            pose: 'peek'
+          }
+        ];
+      }
+
+      function resetAmbientParticles() {
+        gameState.ambientParticles = Array.from({ length: 26 }, (_, i) => createAmbientParticle(true, i));
+      }
+
+      function createAmbientParticle(randomY = false, seed = 0) {
+        const bg = saveData.equipped.backgrounds;
+        if (bg === 'night_lanterns') {
+          // Светлячки
+          return {
+            kind: 'firefly',
+            x: Math.random() * width,
+            y: Math.random() * height,
+            size: 2.2 + Math.random() * 2.5,
+            vx: -12 + Math.random() * 24,
+            vy: -14 + Math.random() * 28,
+            phase: Math.random() * Math.PI * 2 + seed
+          };
+        }
+        if (bg === 'winter_onsen') {
+          // Снежинки
+          return {
+            kind: 'snow',
+            x: Math.random() * width,
+            y: randomY ? Math.random() * height : -15,
+            size: 2.5 + Math.random() * 3.5,
+            vy: 22 + Math.random() * 28,
+            vx: -8 + Math.random() * 16,
+            swayPhase: Math.random() * Math.PI * 2 + seed
+          };
+        }
+        if (bg === 'sakura_waterfall') {
+          // Лепестки сакуры
+          const pinks = ['#ffb7c5', '#ff8da1', '#ffd6e0', '#ff6b8b'];
+          return {
+            kind: 'petal',
+            x: Math.random() * width,
+            y: randomY ? Math.random() * height : -20,
+            size: 6 + Math.random() * 6,
+            vy: 20 + Math.random() * 22,
+            vx: 10 + Math.random() * 18,
+            rot: Math.random() * Math.PI * 2,
+            vRot: -1.5 + Math.random() * 3,
+            swayPhase: Math.random() * Math.PI * 2 + seed,
+            color: pinks[Math.floor(Math.random() * pinks.length)]
+          };
+        }
+
+        // По умолчанию: осенние листья
+        const colors = ['#e85d24', '#f28f27', '#c93b18', '#7aa83e', '#d9a420'];
+        return {
+          kind: 'leaf',
+          x: Math.random() * width,
+          y: randomY ? Math.random() * height : -20,
+          size: 7 + Math.random() * 8,
+          vy: 18 + Math.random() * 24,
+          vx: -10 + Math.random() * 20,
+          rot: Math.random() * Math.PI * 2,
+          vRot: -1.2 + Math.random() * 2.4,
+          swayPhase: Math.random() * Math.PI * 2 + seed,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          isMaple: Math.random() > 0.45
+        };
+      }
+
+      function triggerPandasCheer(duration = 1.8) {
+        gameState.pandas.forEach((p, idx) => {
+          p.cheerTimer = duration + idx * 0.15;
+          p.earTwitch = 0.6;
+        });
+      }
+
+      // --- СОЗДАНИЕ ОБЪЕКТА БУТЫЛКИ С ФИЗИКОЙ ЖИДКОСТИ ---
+      function createBottleObject(layers) {
+        const bubbles = Array.from({ length: 7 }, () => ({
+          rx: (Math.random() - 0.5) * 0.65,
+          ry: Math.random(),
+          r: 1.2 + Math.random() * 1.8,
+          speed: 0.12 + Math.random() * 0.18,
+          wobble: Math.random() * Math.PI * 2
+        }));
+
+        const isCompleted = isBottleUniformFull(layers);
+        return {
+          layers: [...layers],
+          x: 0,
+          y: 0,
+          targetX: 0,
+          targetY: 0,
+          angle: 0,
+          liftOffset: 0,
+          sloshAngle: 0,
+          sloshVel: 0,
+          corkProgress: isCompleted ? 1 : 0,
+          completed: isCompleted,
+          bubbles
+        };
+      }
+
+      function isBottleUniformFull(layers) {
+        if (layers.length !== BOTTLE_CAPACITY) return false;
+        const first = layers[0];
+        return layers.every(c => c === first);
+      }
+
+      // --- ГЕНЕРАТОР РЕШАЕМЫХ УРОВНЕЙ ---
+      function generateLevel(levelNum) {
+        const numColors = Math.min(3 + Math.floor((levelNum - 1) / 2), 7);
+        const emptyBottles = 2;
+
+        let state = [];
+        let attempts = 0;
+        do {
+          const pool = [];
+          for (let c = 0; c < numColors; c++) {
+            for (let k = 0; k < BOTTLE_CAPACITY; k++) {
+              pool.push(c);
+            }
+          }
+          for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+          }
+          state = [];
+          for (let b = 0; b < numColors; b++) {
+            state.push(pool.slice(b * BOTTLE_CAPACITY, (b + 1) * BOTTLE_CAPACITY));
+          }
+          for (let e = 0; e < emptyBottles; e++) {
+            state.push([]);
+          }
+          attempts++;
+        } while (
+          attempts < 30 &&
+          state.some(b => b.length === BOTTLE_CAPACITY && b.every(x => x === b[0]))
+        );
+
+        gameState.level = levelNum;
+        saveData.level = levelNum;
+        persistSaveData();
+
+        gameState.moves = 0;
+        gameState.parMoves = numColors * 3 + Math.floor(numColors * 0.8);
+        gameState.history = [];
+        gameState.selectedIndex = -1;
+        gameState.won = false;
+        gameState.activePour = null;
+        gameState.activeHint = null;
+        gameState.boosterUses = { hint: 0, shuffle: 0, extraBottle: 0 };
+        gameState.particles = [];
+
+        gameState.initialSnapshot = state.map(b => [...b]);
+        gameState.bottles = state.map(b => createBottleObject(b));
+
+        layoutBottles(true);
+        updateHUD();
+        hideWinModal();
+      }
+
+      function restartCurrentLevel() {
+        if (gameState.activePour) return;
+        gameState.moves = 0;
+        gameState.history = [];
+        gameState.selectedIndex = -1;
+        gameState.won = false;
+        gameState.activePour = null;
+        gameState.activeHint = null;
+        gameState.boosterUses = { hint: 0, shuffle: 0, extraBottle: 0 };
+        gameState.bottles = gameState.initialSnapshot.map(b => createBottleObject(b));
+        layoutBottles(true);
+        updateHUD();
+        hideWinModal();
+        sound.playDeselect();
+        showToast('Уровень начат заново');
+      }
+
+      // --- АДАПТИВНАЯ РАССТАНОВКА БУТЫЛОК НА ЭКРАНЕ ---
+      function layoutBottles(snapImmediately = false) {
+        const count = gameState.bottles.length;
+        if (count === 0) return;
+
+        let rows = 1;
+        if (count > 5 && width < 760) {
+          rows = 2;
+        } else if (count > 6) {
+          rows = 2;
+        }
+
+        const topRowCount = rows === 1 ? count : Math.ceil(count / 2);
+        const bottomRowCount = rows === 1 ? 0 : count - topRowCount;
+        const maxCols = Math.max(topRowCount, bottomRowCount);
+
+        const safeTop = Math.max(84, height * 0.14);
+        const safeBottom = Math.max(88, height * 0.14);
+        const availH = height - safeTop - safeBottom;
+        const availW = width * 0.92;
+
+        const maxBottleWByCols = (availW / maxCols) * 0.68;
+        const maxBottleHByRows = rows === 1 ? availH * 0.62 : (availH * 0.42);
+        let bottleH = clamp(Math.min(maxBottleHByRows, maxBottleWByCols * 3.15), 110, 200);
+        let bottleW = bottleH / 3.15;
+
+        gameState.bottleGeom = { w: bottleW, h: bottleH };
+
+        const colSpacing = Math.min(bottleW * 1.52, availW / maxCols);
+        const rowSpacing = bottleH + Math.max(26, bottleH * 0.23);
+        const centerY = safeTop + availH * 0.52;
+
+        gameState.bottles.forEach((bottle, idx) => {
+          let rowIdx = 0;
+          let colIdx = idx;
+          let colsInThisRow = topRowCount;
+
+          if (rows === 2 && idx >= topRowCount) {
+            rowIdx = 1;
+            colIdx = idx - topRowCount;
+            colsInThisRow = bottomRowCount;
+          }
+
+          const rowWidth = (colsInThisRow - 1) * colSpacing;
+          const bx = width * 0.5 - rowWidth * 0.5 + colIdx * colSpacing;
+          const by = rows === 1
+            ? centerY
+            : centerY + (rowIdx === 0 ? -rowSpacing * 0.5 : rowSpacing * 0.5);
+
+          bottle.targetX = bx;
+          bottle.targetY = by;
+          if (snapImmediately) {
+            bottle.x = bx;
+            bottle.y = by;
+          }
+        });
+      }
+
+      // --- ИГРОВАЯ ЛОГИКА ПЕРЕЛИВАНИЯ ---
+      function getTopRun(layers) {
+        if (layers.length === 0) return { color: -1, count: 0 };
+        const topColor = layers[layers.length - 1];
+        let count = 0;
+        for (let i = layers.length - 1; i >= 0; i--) {
+          if (layers[i] === topColor) count++;
+          else break;
+        }
+        return { color: topColor, count };
+      }
+
+      function canPour(fromIdx, toIdx) {
+        if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return false;
+        const src = gameState.bottles[fromIdx];
+        const dst = gameState.bottles[toIdx];
+        if (!src || !dst) return false;
+        if (src.layers.length === 0) return false;
+        if (dst.layers.length >= BOTTLE_CAPACITY) return false;
+        if (src.completed) return false;
+
+        const srcTop = src.layers[src.layers.length - 1];
+        if (dst.layers.length === 0) return true;
+        const dstTop = dst.layers[dst.layers.length - 1];
+        return srcTop === dstTop;
+      }
+
+      function handleBottleClick(index) {
+        if (gameState.won || gameState.activePour) return;
+        const clicked = gameState.bottles[index];
+        if (!clicked) return;
+
+        if (gameState.selectedIndex === -1) {
+          if (clicked.layers.length === 0) {
+            clicked.sloshVel += 2.2;
+            sound.playDeselect();
+            showToast('Эта колба пустая');
+            return;
+          }
+          if (clicked.completed) {
+            clicked.sloshVel += 1.5;
+            sound.playSelect(1.25);
+            showToast('Этот цвет уже полностью собран!');
+            return;
+          }
+          gameState.selectedIndex = index;
+          clicked.sloshVel += 3.2;
+          sound.playSelect(1.0);
+          return;
+        }
+
+        if (gameState.selectedIndex === index) {
+          clicked.sloshVel -= 2.5;
+          gameState.selectedIndex = -1;
+          sound.playDeselect();
+          return;
+        }
+
+        const fromIdx = gameState.selectedIndex;
+        const toIdx = index;
+
+        if (canPour(fromIdx, toIdx)) {
+          gameState.activeHint = null;
+          startPourAnimation(fromIdx, toIdx);
+        } else {
+          const prev = gameState.bottles[fromIdx];
+          if (prev) prev.sloshVel -= 1.8;
+
+          if (clicked.layers.length > 0 && !clicked.completed) {
+            gameState.selectedIndex = toIdx;
+            clicked.sloshVel += 3.2;
+            sound.playSelect(1.08);
+          } else {
+            gameState.selectedIndex = -1;
+            clicked.sloshVel += 2.5;
+            sound.playDeselect();
+            showToast('Можно переливать только на такой же цвет или в пустую колбу');
+          }
+        }
+      }
+
+      function startPourAnimation(fromIdx, toIdx) {
+        const src = gameState.bottles[fromIdx];
+        const dst = gameState.bottles[toIdx];
+        const { color, count } = getTopRun(src.layers);
+        const space = BOTTLE_CAPACITY - dst.layers.length;
+        const amount = Math.min(count, space);
+
+        gameState.history.push({
+          bottles: gameState.bottles.map(b => [...b.layers]),
+          moves: gameState.moves
+        });
+
+        gameState.selectedIndex = -1;
+
+        const pourFromLeft = src.targetX <= dst.targetX;
+        const dir = pourFromLeft ? 1 : -1;
+        const { w, h } = gameState.bottleGeom;
+
+        const hoverX = dst.targetX - dir * (w * 0.92);
+        const hoverY = dst.targetY - h * 0.62;
+        const tiltAngle = dir * (Math.PI * 0.39);
+        const pourDuration = 0.36 + amount * 0.13;
+
+        gameState.activePour = {
+          fromIdx,
+          toIdx,
+          color,
+          amount,
+          phase: 'move_in',
+          timer: 0,
+          moveInDur: 0.24,
+          pourDur: pourDuration,
+          moveBackDur: 0.24,
+          startX: src.x,
+          startY: src.y,
+          hoverX,
+          hoverY,
+          tiltAngle,
+          dir,
+          transferred: 0,
+          initialSrcCount: src.layers.length,
+          initialDstCount: dst.layers.length,
+          soundStarted: false,
+          splashAccum: 0
+        };
+      }
+
+      function finishPourState(pour) {
+        const src = gameState.bottles[pour.fromIdx];
+        const dst = gameState.bottles[pour.toIdx];
+
+        src.layers.splice(pour.initialSrcCount - pour.amount, pour.amount);
+        while (dst.layers.length < pour.initialDstCount + pour.amount) {
+          dst.layers.push(pour.color);
+        }
+
+        src.angle = 0;
+        src.sloshVel += (Math.random() - 0.5) * 4;
+        dst.sloshVel += 4.5;
+
+        gameState.moves += 1;
+
+        if (isBottleUniformFull(dst.layers) && !dst.completed) {
+          dst.completed = true;
+          sound.playBottleComplete();
+          spawnCelebrationBurst(dst.targetX, dst.targetY - gameState.bottleGeom.h * 0.55, 26);
+          triggerPandasCheer(2.0);
+          showToast('Колба собрана! Пробка закрыта 🐾');
+        }
+
+        updateHUD();
+        checkLevelWin();
+      }
+
+      function checkLevelWin() {
+        const allValid = gameState.bottles.every(
+          b => b.layers.length === 0 || isBottleUniformFull(b.layers)
+        );
+        if (allValid) {
+          gameState.won = true;
+          const earnedStars = computeEarnedStars();
+          const baseReward = 25 + Math.min(gameState.level * 3, 30);
+          const starBonus = earnedStars === 3 ? 20 : earnedStars === 2 ? 10 : 5;
+          const totalCoinsEarned = baseReward + starBonus;
+
+          saveData.totalStars += earnedStars;
+          saveData.coins += totalCoinsEarned;
+          persistSaveData();
+
+          updateHUD();
+          animateCoinHudPop();
+          sound.playWin();
+          triggerPandasCheer(4.2);
+          spawnCelebrationBurst(width * 0.5, height * 0.35, 60);
+
+          setTimeout(() => {
+            showWinModal(earnedStars, totalCoinsEarned);
+          }, 520);
+        }
+      }
+
+      // --- ВСПОМОГАТЕЛЬНЫЕ ИНСТРУМЕНТЫ (БУСТЕРЫ) ---
+      function trySpendForBooster(type) {
+        const usedCount = gameState.boosterUses[type] || 0;
+        if (usedCount === 0) {
+          gameState.boosterUses[type] = 1;
+          return true;
+        }
+        const cost = BOOSTER_COSTS[type];
+        if (saveData.coins < cost) {
+          showToast(`Недостаточно монет! Нужно ${cost} 🪙`);
+          sound.playDeselect();
+          return false;
+        }
+        saveData.coins -= cost;
+        gameState.boosterUses[type] = usedCount + 1;
+        persistSaveData();
+        animateCoinHudPop();
+        return true;
+      }
+
+      function undoLastMove() {
+        if (gameState.activePour || gameState.won || gameState.history.length === 0) return;
+        const prev = gameState.history.pop();
+        gameState.selectedIndex = -1;
+        gameState.activeHint = null;
+        gameState.moves = prev.moves;
+        gameState.bottles = prev.bottles.map((layers, idx) => {
+          const old = gameState.bottles[idx];
+          const b = createBottleObject(layers);
+          if (old) {
+            b.x = old.x;
+            b.y = old.y;
+          }
+          return b;
+        });
+        layoutBottles(false);
+        updateHUD();
+        sound.playDeselect();
+      }
+
+      // Поиск самого выгодного хода для бустера «Подсказка»
+      function findBestMove() {
+        let bestMove = null;
+        let bestScore = -Infinity;
+
+        for (let i = 0; i < gameState.bottles.length; i++) {
+          const src = gameState.bottles[i];
+          if (src.layers.length === 0 || src.completed) continue;
+          const srcRun = getTopRun(src.layers);
+          const isSrcSingleColor = srcRun.count === src.layers.length;
+
+          for (let j = 0; j < gameState.bottles.length; j++) {
+            if (!canPour(i, j)) continue;
+            const dst = gameState.bottles[j];
+            const space = BOTTLE_CAPACITY - dst.layers.length;
+            const transfer = Math.min(srcRun.count, space);
+
+            // Не предлагаем бессмысленный перенос одноцветной стопки в пустую колбу
+            if (dst.layers.length === 0 && isSrcSingleColor) continue;
+
+            let score = 0;
+            if (dst.layers.length > 0) {
+              // Соединение одинаковых цветов имеет высокий приоритет
+              score += 50 + transfer * 15;
+              if (dst.layers.length + transfer === BOTTLE_CAPACITY) {
+                score += 60; // Полностью закрывает колбу!
+              }
+              if (transfer === srcRun.count) {
+                score += 25; // Освобождает новый цвет снизу
+              }
+            } else {
+              // Перенос в пустую колбу, чтобы открыть заблокированный слой
+              if (!isSrcSingleColor && transfer === srcRun.count) {
+                score += 35;
+              } else {
+                score += 5;
+              }
+            }
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestMove = { fromIdx: i, toIdx: j };
+            }
+          }
+        }
+        return bestMove;
+      }
+
+      function useHintBooster() {
+        if (gameState.activePour || gameState.won) return;
+        const move = findBestMove();
+        if (!move) {
+          showToast('Выгодных ходов не найдено — попробуйте Микс или + Колбу!');
+          sound.playDeselect();
+          return;
+        }
+        if (!trySpendForBooster('hint')) return;
+
+        gameState.selectedIndex = -1;
+        gameState.activeHint = {
+          fromIdx: move.fromIdx,
+          toIdx: move.toIdx,
+          timer: 4.5
+        };
+        gameState.bottles[move.fromIdx].sloshVel += 3.5;
+        gameState.bottles[move.toIdx].sloshVel -= 3.5;
+        sound.playMagic();
+        updateHUD();
+        showToast('Подсказка: перелейте из подсвеченной колбы!');
+      }
+
+      function useShuffleBooster() {
+        if (gameState.activePour || gameState.won) return;
+
+        // Собираем слои только из незавершённых непустых колб
+        const activeIndices = [];
+        const pool = [];
+        gameState.bottles.forEach((b, idx) => {
+          if (!b.completed && b.layers.length > 0) {
+            activeIndices.push(idx);
+            pool.push(...b.layers);
+          }
+        });
+
+        if (activeIndices.length < 2) {
+          showToast('Нечего перемешивать!');
+          return;
+        }
+
+        if (!trySpendForBooster('shuffle')) return;
+
+        // Перемешиваем пул
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+
+        let cursor = 0;
+        activeIndices.forEach(idx => {
+          const b = gameState.bottles[idx];
+          const len = b.layers.length;
+          b.layers = pool.slice(cursor, cursor + len);
+          cursor += len;
+          b.sloshVel += (Math.random() - 0.5) * 9;
+          if (isBottleUniformFull(b.layers)) {
+            b.completed = true;
+          }
+          spawnCelebrationBurst(b.x, b.y, 10);
+        });
+
+        gameState.selectedIndex = -1;
+        gameState.activeHint = null;
+        sound.playMagic();
+        updateHUD();
+        showToast('Слои перемешаны с лесной магией!');
+        checkLevelWin();
+      }
+
+      function useExtraBottleBooster() {
+        if (gameState.activePour || gameState.won) return;
+        if (gameState.boosterUses.extraBottle >= 2) {
+          showToast('Максимум 2 дополнительные колбы на уровень');
+          return;
+        }
+        if (!trySpendForBooster('extraBottle')) return;
+
+        const newB = createBottleObject([]);
+        newB.x = width * 0.5;
+        newB.y = height + 80;
+        gameState.bottles.push(newB);
+        gameState.activeHint = null;
+
+        layoutBottles(false);
+        updateHUD();
+        sound.playMagic();
+        spawnCelebrationBurst(width * 0.5, height * 0.55, 18);
+        showToast('Добавлена дополнительная пустая колба!');
+      }
+
+      // --- РЕЙТИНГ ЗВЁЗД, МОНЕТЫ И HUD ---
+      function computeEarnedStars() {
+        if (gameState.moves <= gameState.parMoves) return 3;
+        if (gameState.moves <= Math.ceil(gameState.parMoves * 1.45)) return 2;
+        return 1;
+      }
+
+      function animateCoinHudPop() {
+        coinsHudPill.classList.add('scale-110', 'border-amber-300');
+        setTimeout(() => {
+          coinsHudPill.classList.remove('scale-110', 'border-amber-300');
+        }, 350);
+      }
+
+      function updateHUD() {
+        levelDisplay.textContent = String(gameState.level);
+        totalStarsDisplay.textContent = String(saveData.totalStars);
+        coinsDisplay.textContent = String(saveData.coins);
+        shopCoinsDisplay.textContent = String(saveData.coins);
+        movesDisplay.textContent = String(gameState.moves);
+        parDisplay.textContent = String(gameState.parMoves);
+
+        const currentStars = computeEarnedStars();
+        const starEls = liveStarsContainer.querySelectorAll('.star-icon');
+        starEls.forEach((el, idx) => {
+          if (idx < currentStars) {
+            el.style.opacity = '1';
+            el.style.filter = 'none';
+            el.style.transform = 'scale(1)';
+          } else {
+            el.style.opacity = '0.25';
+            el.style.filter = 'grayscale(1)';
+            el.style.transform = 'scale(0.85)';
+          }
+        });
+
+        undoBtn.disabled = gameState.history.length === 0 || gameState.won;
+        undoBadge.textContent = String(gameState.history.length);
+
+        hintCostBadge.textContent = gameState.boosterUses.hint === 0 ? 'Беспл.' : `${BOOSTER_COSTS.hint} 🪙`;
+        shuffleCostBadge.textContent = gameState.boosterUses.shuffle === 0 ? 'Беспл.' : `${BOOSTER_COSTS.shuffle} 🪙`;
+        extraBottleBadge.textContent = gameState.boosterUses.extraBottle === 0
+          ? 'Беспл.'
+          : gameState.boosterUses.extraBottle === 1
+          ? `${BOOSTER_COSTS.extraBottle} 🪙`
+          : 'Макс.';
+        extraBottleBtn.disabled = gameState.boosterUses.extraBottle >= 2 || gameState.won;
+      }
+
+      function showWinModal(stars, coinsEarned) {
+        const starIcons = modalStars.querySelectorAll('span');
+        starIcons.forEach((el, i) => {
+          if (i < stars) {
+            el.style.opacity = '1';
+            el.style.filter = 'none';
+            el.style.transform = 'scale(1.08)';
+          } else {
+            el.style.opacity = '0.25';
+            el.style.filter = 'grayscale(1)';
+            el.style.transform = 'scale(0.85)';
+          }
+        });
+        modalCoinsReward.textContent = `+${coinsEarned} монет`;
+        const word = stars === 3 ? 'Идеально!' : stars === 2 ? 'Отличный результат!' : 'Уровень пройден!';
+        modalStatsText.textContent = `${word} Вы справились за ${gameState.moves} ход(ов) и получили ${stars} ★`;
+        winModal.classList.remove('hidden');
+        winModal.classList.add('flex');
+      }
+
+      function hideWinModal() {
+        winModal.classList.add('hidden');
+        winModal.classList.remove('flex');
+      }
+
+      // --- МАГАЗИН СКИНОВ (БУТЫЛКИ, ФОНЫ, ПАНДЫ) ---
+      function openShop(tab = gameState.currentShopTab) {
+        gameState.currentShopTab = tab;
+        shopCoinsDisplay.textContent = String(saveData.coins);
+        shopTabBtns.forEach(btn => {
+          if (btn.dataset.shopTab === tab) {
+            btn.classList.add('panda-btn-accent');
+          } else {
+            btn.classList.remove('panda-btn-accent');
+          }
+        });
+        renderShopItems();
+        shopModal.classList.remove('hidden');
+        shopModal.classList.add('flex');
+        sound.playSelect(1.12);
+      }
+
+      function closeShop() {
+        shopModal.classList.add('hidden');
+        shopModal.classList.remove('flex');
+        sound.playDeselect();
+      }
+
+      function renderShopItems() {
+        const category = gameState.currentShopTab;
+        const items = SHOP_CATALOG[category] || [];
+        shopItemsGrid.innerHTML = '';
+
+        items.forEach(item => {
+          const isUnlocked = saveData.unlocked[category].includes(item.id);
+          const isEquipped = saveData.equipped[category] === item.id;
+
+          const card = document.createElement('div');
+          card.className = `rounded-2xl p-3.5 sm:p-4 border transition flex flex-col justify-between gap-3 ${
+            isEquipped
+              ? 'bg-amber-900/45 border-amber-300/80 shadow-lg'
+              : 'bg-black/35 border-amber-200/20 hover:border-amber-200/40'
+          }`;
+
+          // Верхняя часть карточки: мини-Canvas превью + описание
+          const topRow = document.createElement('div');
+          topRow.className = 'flex items-center gap-3.5';
+
+          const previewCanvas = document.createElement('canvas');
+          previewCanvas.width = 140;
+          previewCanvas.height = 140;
+          previewCanvas.className = 'w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-amber-200/25 bg-[#231309] shrink-0';
+          drawShopPreview(previewCanvas, category, item.id);
+
+          const infoBox = document.createElement('div');
+          infoBox.className = 'flex-1 min-w-0';
+          infoBox.innerHTML = `
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <h3 class="text-sm sm:text-base font-black text-amber-50 leading-snug">${item.name}</h3>
+            </div>
+            <p class="text-xs text-amber-100/75 mt-1 leading-relaxed">${item.desc}</p>
+          `;
+
+          topRow.appendChild(previewCanvas);
+          topRow.appendChild(infoBox);
+
+          // Нижняя кнопка покупки / выбора
+          const actionBtn = document.createElement('button');
+          actionBtn.className = 'w-full py-2 px-4 rounded-full text-xs sm:text-sm font-black transition';
+
+          if (isEquipped) {
+            actionBtn.className += ' panda-btn panda-btn-bamboo';
+            actionBtn.textContent = '✓ Выбрано';
+            actionBtn.disabled = true;
+          } else if (isUnlocked) {
+            actionBtn.className += ' panda-btn';
+            actionBtn.textContent = 'Выбрать';
+            actionBtn.addEventListener('click', () => {
+              equipShopItem(category, item.id);
+            });
+          } else {
+            const canAfford = saveData.coins >= item.price;
+            actionBtn.className += canAfford ? ' panda-btn panda-btn-gold' : ' panda-btn';
+            actionBtn.innerHTML = `<span>Купить за ${item.price} 🪙</span>`;
+            actionBtn.addEventListener('click', () => {
+              buyShopItem(category, item);
+            });
+          }
+
+          card.appendChild(topRow);
+          card.appendChild(actionBtn);
+          shopItemsGrid.appendChild(card);
+        });
+      }
+
+      function buyShopItem(category, item) {
+        if (saveData.coins < item.price) {
+          sound.playDeselect();
+          showToast(`Не хватает монет! Нужно ${item.price} 🪙`);
+          return;
+        }
+        saveData.coins -= item.price;
+        if (!saveData.unlocked[category].includes(item.id)) {
+          saveData.unlocked[category].push(item.id);
+        }
+        saveData.equipped[category] = item.id;
+        persistSaveData();
+
+        if (category === 'backgrounds') {
+          resetAmbientParticles();
+        }
+
+        sound.playCoin();
+        updateHUD();
+        renderShopItems();
+        spawnCelebrationBurst(width * 0.5, height * 0.5, 22);
+        showToast(`Куплено и выбрано: «${item.name}»!`);
+      }
+
+      function equipShopItem(category, itemId) {
+        saveData.equipped[category] = itemId;
+        persistSaveData();
+        if (category === 'backgrounds') {
+          resetAmbientParticles();
+        }
+        sound.playSelect(1.2);
+        renderShopItems();
+        showToast('Оформление применено!');
+      }
+
+      // Отрисовка живого превью товара прямо на мини-Canvas в магазине
+      function drawShopPreview(pCanvas, category, itemId) {
+        const pCtx = pCanvas.getContext('2d');
+        const pw = pCanvas.width;
+        const ph = pCanvas.height;
+        pCtx.clearRect(0, 0, pw, ph);
+
+        if (category === 'backgrounds') {
+          drawBackgroundSceneOnContext(pCtx, pw, ph, itemId, 1.2, true);
+        } else if (category === 'bottles') {
+          drawBackgroundSceneOnContext(pCtx, pw, ph, saveData.equipped.backgrounds, 1.2, true);
+          const mockBottle = {
+            layers: [0, 1, 2],
+            x: pw * 0.5,
+            y: ph * 0.54,
+            angle: 0,
+            sloshAngle: 0,
+            corkProgress: 0,
+            completed: false,
+            bubbles: []
+          };
+          drawBottleOnContext(pCtx, mockBottle, { w: 34, h: 102 }, itemId, false, false, 1.0);
+        } else if (category === 'pandas') {
+          drawBackgroundSceneOnContext(pCtx, pw, ph, saveData.equipped.backgrounds, 1.2, true);
+          const mockPanda = {
+            blinkTimer: 2,
+            isBlinking: false,
+            tailPhase: 0.7,
+            cheerTimer: 0,
+            earTwitch: 0,
+            pose: 'branch'
+          };
+          drawSinglePandaOnContext(pCtx, mockPanda, pw * 0.54, ph * 0.56, 1.15, 1, itemId, 1.0);
+        }
+      }
+
+      // --- ЧАСТИЦЫ И БРЫЗГИ ---
+      function spawnSplashDroplet(x, y, colorObj) {
+        gameState.particles.push({
+          type: 'droplet',
+          x: x + (Math.random() - 0.5) * 8,
+          y,
+          vx: (Math.random() - 0.5) * 65,
+          vy: -35 - Math.random() * 55,
+          r: 2 + Math.random() * 2.5,
+          color: colorObj.top,
+          life: 0.45 + Math.random() * 0.25,
+          maxLife: 0.7
+        });
+      }
+
+      function spawnCelebrationBurst(x, y, count = 25) {
+        const emojis = ['🍁', '✨', '⭐', '🎋', '🐾', '🪙'];
+        for (let i = 0; i < count; i++) {
+          const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+          const speed = 70 + Math.random() * 190;
+          gameState.particles.push({
+            type: 'sparkle',
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 60,
+            size: 12 + Math.random() * 10,
+            char: emojis[i % emojis.length],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 6,
+            life: 1.0 + Math.random() * 0.6,
+            maxLife: 1.6
+          });
+        }
+      }
+
+      // --- ОБНОВЛЕНИЕ ФИЗИКИ И АНИМАЦИЙ (60 FPS) ---
+      let lastTime = performance.now();
+      let elapsedTime = 0;
+
+      function update(dt) {
+        elapsedTime += dt;
+
+        // 1. Обновляем атмосферные частицы (листья, светлячки, лепестки, снежинки)
+        for (let i = 0; i < gameState.ambientParticles.length; i++) {
+          const p = gameState.ambientParticles[i];
+          if (p.kind === 'firefly') {
+            p.x += (p.vx + Math.sin(elapsedTime * 1.2 + p.phase) * 18) * dt;
+            p.y += (p.vy + Math.cos(elapsedTime * 1.5 + p.phase) * 14) * dt;
+            if (p.x < -20) p.x = width + 20;
+            if (p.x > width + 20) p.x = -20;
+            if (p.y < -20) p.y = height + 20;
+            if (p.y > height + 20) p.y = -20;
+          } else {
+            p.y += p.vy * dt;
+            p.x += (p.vx + Math.sin(elapsedTime * 1.4 + p.swayPhase) * 20) * dt;
+            if (p.rot !== undefined) p.rot += p.vRot * dt;
+            if (p.y > height + 25) {
+              gameState.ambientParticles[i] = createAmbientParticle(false, i);
+            }
+          }
+        }
+
+        // 2. Обновляем таймер подсказки
+        if (gameState.activeHint) {
+          gameState.activeHint.timer -= dt;
+          if (gameState.activeHint.timer <= 0) {
+            gameState.activeHint = null;
+          }
+        }
+
+        // 3. Обновляем анимацию красных панд
+        gameState.pandas.forEach(p => {
+          p.tailPhase += dt * 2.3;
+          if (p.cheerTimer > 0) p.cheerTimer = Math.max(0, p.cheerTimer - dt);
+          if (p.earTwitch > 0) p.earTwitch = Math.max(0, p.earTwitch - dt * 2);
+          p.blinkTimer -= dt;
+          if (p.blinkTimer <= 0) {
+            if (!p.isBlinking) {
+              p.isBlinking = true;
+              p.blinkTimer = 0.14;
+            } else {
+              p.isBlinking = false;
+              p.blinkTimer = 2.4 + Math.random() * 3.2;
+            }
+          }
+        });
+
+        // 4. Обновляем активное переливание
+        const pour = gameState.activePour;
+        if (pour) {
+          pour.timer += dt;
+          const src = gameState.bottles[pour.fromIdx];
+          const dst = gameState.bottles[pour.toIdx];
+
+          if (pour.phase === 'move_in') {
+            const t = clamp(pour.timer / pour.moveInDur, 0, 1);
+            const ease = easeInOutCubic(t);
+            src.x = lerp(pour.startX, pour.hoverX, ease);
+            src.y = lerp(pour.startY, pour.hoverY, ease);
+            src.angle = lerp(0, pour.tiltAngle, ease);
+            src.sloshVel += pour.dir * 6 * dt;
+
+            if (t >= 1) {
+              pour.phase = 'pouring';
+              pour.timer = 0;
+              if (!pour.soundStarted) {
+                pour.soundStarted = true;
+                sound.playPour(pour.pourDur, pour.initialDstCount / BOTTLE_CAPACITY);
+              }
+            }
+          } else if (pour.phase === 'pouring') {
+            const t = clamp(pour.timer / pour.pourDur, 0, 1);
+            const transferredFloat = pour.amount * t;
+            pour.transferred = transferredFloat;
+
+            const extraTilt = pour.dir * 0.14 * t;
+            src.angle = pour.tiltAngle + extraTilt;
+            src.x = pour.hoverX;
+            src.y = pour.hoverY;
+
+            dst.sloshVel += Math.sin(elapsedTime * 28) * 18 * dt;
+
+            pour.splashAccum += dt;
+            if (pour.splashAccum > 0.045) {
+              pour.splashAccum = 0;
+              const { h } = gameState.bottleGeom;
+              const currentFill = (pour.initialDstCount + transferredFloat) / BOTTLE_CAPACITY;
+              const surfaceY = dst.y + h * 0.44 - currentFill * (h * 0.74);
+              spawnSplashDroplet(dst.x, surfaceY, LIQUID_PALETTE[pour.color]);
+            }
+
+            if (t >= 1) {
+              pour.phase = 'move_back';
+              pour.timer = 0;
+              src.layers.splice(pour.initialSrcCount - pour.amount, pour.amount);
+              while (dst.layers.length < pour.initialDstCount + pour.amount) {
+                dst.layers.push(pour.color);
+              }
+              pour.transferred = 0;
+            }
+          } else if (pour.phase === 'move_back') {
+            const t = clamp(pour.timer / pour.moveBackDur, 0, 1);
+            const ease = easeInOutCubic(t);
+            src.x = lerp(pour.hoverX, src.targetX, ease);
+            src.y = lerp(pour.hoverY, src.targetY, ease);
+            src.angle = lerp(pour.tiltAngle, 0, ease);
+
+            if (t >= 1) {
+              const finishedPour = gameState.activePour;
+              gameState.activePour = null;
+              finishPourState(finishedPour);
+            }
+          }
+        }
+
+        // 5. Обновляем плавное движение, пружинный плеск и пробки всех бутылок
+        const liftAmount = gameState.bottleGeom.h * 0.22;
+        gameState.bottles.forEach((b, idx) => {
+          const isPouringSource = gameState.activePour && gameState.activePour.fromIdx === idx;
+          if (!isPouringSource) {
+            const targetLift = gameState.selectedIndex === idx ? -liftAmount : 0;
+            b.liftOffset = lerp(b.liftOffset, targetLift, 1 - Math.exp(-16 * dt));
+            b.x = lerp(b.x, b.targetX, 1 - Math.exp(-14 * dt));
+            b.y = lerp(b.y, b.targetY + b.liftOffset, 1 - Math.exp(-14 * dt));
+            b.angle = lerp(b.angle, 0, 1 - Math.exp(-16 * dt));
+          }
+
+          const stiffness = 65;
+          const damping = 6.2;
+          const sloshAcc = -stiffness * b.sloshAngle - damping * b.sloshVel;
+          b.sloshVel += sloshAcc * dt;
+          b.sloshAngle += b.sloshVel * dt;
+
+          const targetCork = b.completed ? 1 : 0;
+          b.corkProgress = lerp(b.corkProgress, targetCork, 1 - Math.exp(-14 * dt));
+
+          b.bubbles.forEach(bub => {
+            bub.ry -= bub.speed * dt;
+            if (bub.ry < 0.04) {
+              bub.ry = 0.96;
+              bub.rx = (Math.random() - 0.5) * 0.65;
+            }
+          });
+        });
+
+        // 6. Обновляем частицы эффектов
+        for (let i = gameState.particles.length - 1; i >= 0; i--) {
+          const p = gameState.particles[i];
+          p.life -= dt;
+          if (p.life <= 0) {
+            gameState.particles.splice(i, 1);
+            continue;
+          }
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy += 260 * dt;
+          if (p.rot !== undefined) p.rot += p.vRot * dt;
+        }
+      }
+
+      // --- ОТРИСОВКА СЦЕНЫ ---
+      function render() {
+        ctx.clearRect(0, 0, width, height);
+
+        const bgSkin = saveData.equipped.backgrounds;
+        const bottleSkin = saveData.equipped.bottles;
+        const pandaSkin = saveData.equipped.pandas;
+
+        drawBackgroundSceneOnContext(ctx, width, height, bgSkin, elapsedTime, false);
+        drawBambooLayer(0, bgSkin);
+        drawRedPandas(pandaSkin);
+        drawBambooLayer(1, bgSkin);
+        drawAmbientParticles();
+
+        // Подсветка подсказки между двумя колбами
+        if (gameState.activeHint) {
+          drawHintArrow(gameState.activeHint);
+        }
+
+        const activeSrcIdx = gameState.activePour ? gameState.activePour.fromIdx : -1;
+        gameState.bottles.forEach((bottle, idx) => {
+          if (idx !== activeSrcIdx) {
+            const isSelected = gameState.selectedIndex === idx;
+            const isHinted = gameState.activeHint && (gameState.activeHint.fromIdx === idx || gameState.activeHint.toIdx === idx);
+            drawBottleOnContext(ctx, bottle, gameState.bottleGeom, bottleSkin, isSelected, isHinted, elapsedTime, idx);
+          }
+        });
+
+        if (gameState.activePour) {
+          drawPouringStream(gameState.activePour);
+          drawBottleOnContext(ctx, gameState.bottles[activeSrcIdx], gameState.bottleGeom, bottleSkin, false, false, elapsedTime, activeSrcIdx);
+        }
+
+        drawParticles();
+      }
+
+      // 1. Отрисовка выбранной фоновой локации
+      function drawBackgroundSceneOnContext(targetCtx, w, h, bgSkin, timeVal, isPreview) {
+        const bgGrad = targetCtx.createLinearGradient(0, 0, 0, h);
+
+        if (bgSkin === 'night_lanterns') {
+          bgGrad.addColorStop(0, '#0a0f26');
+          bgGrad.addColorStop(0.45, '#152047');
+          bgGrad.addColorStop(0.85, '#1b294a');
+          bgGrad.addColorStop(1, '#0c1326');
+          targetCtx.fillStyle = bgGrad;
+          targetCtx.fillRect(0, 0, w, h);
+
+          // Полная луна
+          const moonX = w * 0.76;
+          const moonY = h * 0.22;
+          const moonR = Math.min(w, h) * (isPreview ? 0.14 : 0.065);
+          const moonGlow = targetCtx.createRadialGradient(moonX, moonY, moonR * 0.3, moonX, moonY, moonR * 3.4);
+          moonGlow.addColorStop(0, 'rgba(255, 248, 210, 0.45)');
+          moonGlow.addColorStop(1, 'rgba(255, 248, 210, 0)');
+          targetCtx.fillStyle = moonGlow;
+          targetCtx.beginPath();
+          targetCtx.arc(moonX, moonY, moonR * 3.4, 0, Math.PI * 2);
+          targetCtx.fill();
+
+          targetCtx.fillStyle = '#fff9db';
+          targetCtx.beginPath();
+          targetCtx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+          targetCtx.fill();
+
+          // Мерцающие звёзды
+          targetCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          for (let i = 0; i < (isPreview ? 12 : 35); i++) {
+            const sx = ((i * 197) % 100) * 0.01 * w;
+            const sy = ((i * 89) % 55) * 0.01 * h;
+            const r = (i % 3 === 0 ? 1.8 : 1.1) * (0.7 + 0.3 * Math.sin(timeVal * 2 + i));
+            targetCtx.beginPath();
+            targetCtx.arc(sx, sy, r, 0, Math.PI * 2);
+            targetCtx.fill();
+          }
+
+          // Бумажные китайские фонарики
+          const lanterns = isPreview
+            ? [{ xRatio: 0.25, yRatio: 0.24, scale: 0.65, phase: 0.5 }]
+            : gameState.lanterns;
+          lanterns.forEach(l => {
+            const lx = w * l.xRatio + Math.sin(timeVal * 1.1 + l.phase) * 5;
+            const ly = h * l.yRatio;
+            const ls = l.scale * (isPreview ? 0.7 : 1);
+
+            targetCtx.save();
+            targetCtx.translate(lx, ly);
+            targetCtx.scale(ls, ls);
+
+            // Нить сверху
+            targetCtx.strokeStyle = 'rgba(255, 215, 140, 0.5)';
+            targetCtx.lineWidth = 1.5;
+            targetCtx.beginPath();
+            targetCtx.moveTo(0, -ly);
+            targetCtx.lineTo(0, -18);
+            targetCtx.stroke();
+
+            // Тёплое свечение фонарика
+            const lGlow = targetCtx.createRadialGradient(0, 0, 4, 0, 0, 52);
+            lGlow.addColorStop(0, 'rgba(255, 165, 65, 0.45)');
+            lGlow.addColorStop(1, 'rgba(255, 110, 30, 0)');
+            targetCtx.fillStyle = lGlow;
+            targetCtx.beginPath();
+            targetCtx.arc(0, 0, 52, 0, Math.PI * 2);
+            targetCtx.fill();
+
+            // Корпус фонарика
+            targetCtx.fillStyle = '#e64925';
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, 0, 15, 19, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.strokeStyle = '#ffbe55';
+            targetCtx.lineWidth = 1.6;
+            targetCtx.stroke();
+
+            // Золотые ободки сверху и снизу
+            targetCtx.fillStyle = '#f5b942';
+            targetCtx.fillRect(-8, -21, 16, 4);
+            targetCtx.fillRect(-8, 17, 16, 4);
+            targetCtx.restore();
+          });
+        } else if (bgSkin === 'sakura_waterfall') {
+          bgGrad.addColorStop(0, '#3a223d');
+          bgGrad.addColorStop(0.4, '#7d4469');
+          bgGrad.addColorStop(0.75, '#b86b84');
+          bgGrad.addColorStop(1, '#3d2438');
+          targetCtx.fillStyle = bgGrad;
+          targetCtx.fillRect(0, 0, w, h);
+
+          // Мягкое утреннее солнце
+          const sunG = targetCtx.createRadialGradient(w * 0.5, h * 0.25, 10, w * 0.5, h * 0.3, Math.max(w, h) * 0.6);
+          sunG.addColorStop(0, 'rgba(255, 225, 235, 0.36)');
+          sunG.addColorStop(1, 'rgba(255, 180, 200, 0)');
+          targetCtx.fillStyle = sunG;
+          targetCtx.fillRect(0, 0, w, h);
+
+          // Горный водопад вдалеке по центру
+          const wfX = w * 0.5;
+          const wfW = w * (isPreview ? 0.22 : 0.11);
+          const wfGrad = targetCtx.createLinearGradient(0, h * 0.35, 0, h);
+          wfGrad.addColorStop(0, 'rgba(195, 238, 255, 0.22)');
+          wfGrad.addColorStop(1, 'rgba(135, 210, 245, 0.06)');
+          targetCtx.fillStyle = wfGrad;
+          targetCtx.fillRect(wfX - wfW * 0.5, h * 0.36, wfW, h * 0.64);
+        } else if (bgSkin === 'winter_onsen') {
+          bgGrad.addColorStop(0, '#162738');
+          bgGrad.addColorStop(0.45, '#2b4863');
+          bgGrad.addColorStop(0.8, '#3f627d');
+          bgGrad.addColorStop(1, '#1d3245');
+          targetCtx.fillStyle = bgGrad;
+          targetCtx.fillRect(0, 0, w, h);
+
+          // Тёплый пар от горячего источника снизу
+          const steamG = targetCtx.createLinearGradient(0, h * 0.65, 0, h);
+          steamG.addColorStop(0, 'rgba(225, 245, 255, 0)');
+          steamG.addColorStop(1, 'rgba(225, 245, 255, 0.22)');
+          targetCtx.fillStyle = steamG;
+          targetCtx.fillRect(0, h * 0.65, w, h * 0.35);
+        } else {
+          // Классический осенний бамбуковый лес
+          bgGrad.addColorStop(0, '#2d1b10');
+          bgGrad.addColorStop(0.35, '#4c2c16');
+          bgGrad.addColorStop(0.72, '#3b2412');
+          bgGrad.addColorStop(1, '#1f1209');
+          targetCtx.fillStyle = bgGrad;
+          targetCtx.fillRect(0, 0, w, h);
+
+          const sunGlow = targetCtx.createRadialGradient(
+            w * 0.52, h * 0.16, 10,
+            w * 0.52, h * 0.25, Math.max(w, h) * 0.65
+          );
+          sunGlow.addColorStop(0, 'rgba(255, 198, 112, 0.28)');
+          sunGlow.addColorStop(0.45, 'rgba(224, 118, 42, 0.12)');
+          sunGlow.addColorStop(1, 'rgba(31, 18, 9, 0)');
+          targetCtx.fillStyle = sunGlow;
+          targetCtx.fillRect(0, 0, w, h);
+
+          if (!isPreview) {
+            gameState.sunbeams.forEach(beam => {
+              const pulse = 0.75 + 0.25 * Math.sin(timeVal * 0.8 + beam.phase);
+              const bx = w * beam.xRatio;
+              const bw = w * beam.widthRatio;
+              const grad = targetCtx.createLinearGradient(bx, 0, bx + Math.sin(beam.angle) * h, h * 0.85);
+              grad.addColorStop(0, `rgba(255, 224, 155, ${beam.alpha * pulse})`);
+              grad.addColorStop(1, 'rgba(255, 190, 105, 0)');
+
+              targetCtx.fillStyle = grad;
+              targetCtx.beginPath();
+              targetCtx.moveTo(bx - bw * 0.5, 0);
+              targetCtx.lineTo(bx + bw * 0.5, 0);
+              targetCtx.lineTo(bx + bw * 1.4 + Math.sin(beam.angle) * h, h * 0.9);
+              targetCtx.lineTo(bx - bw * 0.4 + Math.sin(beam.angle) * h, h * 0.9);
+              targetCtx.closePath();
+              targetCtx.fill();
+            });
+          }
+        }
+      }
+
+      function drawBambooLayer(layerIdx, bgSkin) {
+        ctx.save();
+        gameState.bambooStalks.forEach(stalk => {
+          if (stalk.layer !== layerIdx) return;
+          const baseX = width * stalk.xRatio;
+          const sway = Math.sin(elapsedTime * stalk.swaySpeed + stalk.swayPhase) * stalk.swayAmp;
+          const alpha = layerIdx === 0 ? 0.24 : 0.38;
+
+          const grad = ctx.createLinearGradient(baseX - stalk.width, 0, baseX + stalk.width, 0);
+          if (bgSkin === 'winter_onsen') {
+            grad.addColorStop(0, `rgba(48, 82, 92, ${alpha})`);
+            grad.addColorStop(0.45, `rgba(148, 196, 204, ${alpha})`);
+            grad.addColorStop(1, `rgba(38, 66, 74, ${alpha})`);
+          } else if (bgSkin === 'sakura_waterfall') {
+            grad.addColorStop(0, `rgba(74, 34, 58, ${alpha})`);
+            grad.addColorStop(0.45, `rgba(150, 82, 114, ${alpha})`);
+            grad.addColorStop(1, `rgba(54, 24, 42, ${alpha})`);
+          } else {
+            grad.addColorStop(0, `rgba(42, 68, 24, ${alpha})`);
+            grad.addColorStop(0.45, `rgba(116, 156, 62, ${alpha})`);
+            grad.addColorStop(1, `rgba(34, 54, 18, ${alpha})`);
+          }
+
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = stalk.width;
+          ctx.lineCap = 'round';
+
+          ctx.beginPath();
+          ctx.moveTo(baseX, height + 20);
+          ctx.quadraticCurveTo(baseX + sway * 0.4, height * 0.5, baseX + sway, -20);
+          ctx.stroke();
+
+          const segments = 5;
+          ctx.strokeStyle = `rgba(225, 240, 200, ${alpha * 0.65})`;
+          ctx.lineWidth = 2;
+          for (let s = 1; s < segments; s++) {
+            const t = s / segments;
+            const sy = height * (1 - t);
+            const sx = baseX + sway * (t * t);
+            ctx.beginPath();
+            ctx.moveTo(sx - stalk.width * 0.52, sy);
+            ctx.lineTo(sx + stalk.width * 0.52, sy - 2);
+            ctx.stroke();
+          }
+        });
+        ctx.restore();
+      }
+
+      // 2. Отрисовка красных панд с выбранным скином персонажей
+      function drawRedPandas(pandaSkin) {
+        const screenScale = clamp(Math.min(width, height) / 760, 0.58, 1.05);
+
+        gameState.pandas.forEach(panda => {
+          if (panda.id === 'bottom_panda' && width < 640) return;
+
+          const px = width * panda.anchorX;
+          const py = height * panda.anchorY;
+          const s = panda.scale * screenScale;
+
+          drawSinglePandaOnContext(ctx, panda, px, py, s, panda.flip, pandaSkin, elapsedTime);
+        });
+      }
+
+      function drawSinglePandaOnContext(targetCtx, panda, px, py, s, flip, pandaSkin, timeVal) {
+        targetCtx.save();
+        targetCtx.translate(px, py);
+        targetCtx.scale(s * flip, s);
+
+        // Ветка
+        if (panda.pose === 'branch') {
+          targetCtx.save();
+          targetCtx.strokeStyle = '#3b1f0e';
+          targetCtx.lineWidth = 14;
+          targetCtx.lineCap = 'round';
+          targetCtx.beginPath();
+          targetCtx.moveTo(-110, 42);
+          targetCtx.quadraticCurveTo(-20, 34, 85, 48);
+          targetCtx.stroke();
+
+          targetCtx.fillStyle = '#d95b26';
+          targetCtx.beginPath();
+          targetCtx.ellipse(74, 42, 12, 5, -0.4, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.fillStyle = '#79a83b';
+          targetCtx.beginPath();
+          targetCtx.ellipse(62, 52, 11, 4.5, 0.5, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.restore();
+        }
+
+        // Хвост
+        const tailWag = Math.sin(panda.tailPhase) * 0.14 + (panda.cheerTimer > 0 ? Math.sin(timeVal * 16) * 0.18 : 0);
+        targetCtx.save();
+        targetCtx.translate(-22, 24);
+        targetCtx.rotate(tailWag);
+        targetCtx.fillStyle = '#c8471b';
+        targetCtx.beginPath();
+        targetCtx.moveTo(0, 0);
+        targetCtx.bezierCurveTo(-45, -18, -82, 12, -74, 34);
+        targetCtx.bezierCurveTo(-66, 54, -22, 34, 0, 14);
+        targetCtx.closePath();
+        targetCtx.fill();
+
+        targetCtx.strokeStyle = '#6e200a';
+        targetCtx.lineWidth = 7;
+        targetCtx.lineCap = 'round';
+        [0.32, 0.55, 0.78].forEach(ratio => {
+          targetCtx.beginPath();
+          targetCtx.arc(-ratio * 66, ratio * 18, 12 - ratio * 3, -0.8, 1.3);
+          targetCtx.stroke();
+        });
+        targetCtx.fillStyle = '#4a1507';
+        targetCtx.beginPath();
+        targetCtx.arc(-71, 30, 8, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.restore();
+
+        const bounceY = panda.cheerTimer > 0 ? -Math.abs(Math.sin(timeVal * 11)) * 10 : 0;
+        targetCtx.translate(0, bounceY);
+
+        // Королевский плащ за спиной (для royal_panda)
+        if (pandaSkin === 'royal_panda') {
+          targetCtx.fillStyle = '#9e1936';
+          targetCtx.strokeStyle = '#ffd15c';
+          targetCtx.lineWidth = 2;
+          targetCtx.beginPath();
+          targetCtx.moveTo(-10, 6);
+          targetCtx.lineTo(-34, 42);
+          targetCtx.lineTo(14, 42);
+          targetCtx.closePath();
+          targetCtx.fill();
+          targetCtx.stroke();
+        }
+
+        // Туловище
+        targetCtx.fillStyle = '#cf4c1e';
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 18, 24, 22, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        targetCtx.fillStyle = '#38180c';
+        targetCtx.beginPath();
+        targetCtx.ellipse(4, 24, 15, 13, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        // Шарфики и аксессуары на шее
+        if (pandaSkin === 'star_pandas') {
+          targetCtx.fillStyle = '#2d479e';
+          targetCtx.beginPath();
+          targetCtx.roundRect(-18, 4, 38, 10, 5);
+          targetCtx.fill();
+          targetCtx.fillStyle = '#ffe066';
+          targetCtx.beginPath();
+          targetCtx.arc(-6, 9, 2.2, 0, Math.PI * 2);
+          targetCtx.arc(8, 9, 2.2, 0, Math.PI * 2);
+          targetCtx.fill();
+        } else if (pandaSkin === 'samurai_tea') {
+          targetCtx.fillStyle = '#3e6e2c';
+          targetCtx.beginPath();
+          targetCtx.roundRect(-18, 4, 38, 9, 4);
+          targetCtx.fill();
+        }
+
+        // Лапки
+        const pawRaise = panda.cheerTimer > 0 ? -18 + Math.sin(timeVal * 18) * 5 : 0;
+        targetCtx.fillStyle = '#2d1208';
+        targetCtx.beginPath();
+        targetCtx.ellipse(-12, 22 + pawRaise, 6.5, 9, -0.35, 0, Math.PI * 2);
+        targetCtx.ellipse(16, 22 + pawRaise, 6.5, 9, 0.35, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        // Бамбуковая флейта в лапках для самурая / мастера чая
+        if (pandaSkin === 'samurai_tea') {
+          targetCtx.save();
+          targetCtx.translate(14, 18 + pawRaise);
+          targetCtx.rotate(-0.35);
+          targetCtx.fillStyle = '#8ac44b';
+          targetCtx.strokeStyle = '#3b5c1a';
+          targetCtx.lineWidth = 1.4;
+          targetCtx.beginPath();
+          targetCtx.roundRect(-16, -2.5, 36, 5, 2.5);
+          targetCtx.fill();
+          targetCtx.stroke();
+          targetCtx.restore();
+        }
+
+        // Голова
+        targetCtx.save();
+        targetCtx.translate(4, -10);
+        targetCtx.rotate(Math.sin(timeVal * 1.3 + panda.tailPhase) * 0.04);
+
+        const earRot = panda.earTwitch > 0 ? Math.sin(timeVal * 35) * 0.15 : 0;
+        [-1, 1].forEach(side => {
+          targetCtx.save();
+          targetCtx.translate(side * 19, -17);
+          targetCtx.rotate(side * 0.35 + earRot);
+          targetCtx.fillStyle = pandaSkin === 'star_pandas' ? '#ffe57f' : '#fff5ea';
+          targetCtx.beginPath();
+          targetCtx.moveTo(-9, 6);
+          targetCtx.quadraticCurveTo(0, -16, 9, 6);
+          targetCtx.closePath();
+          targetCtx.fill();
+
+          targetCtx.fillStyle = '#75230b';
+          targetCtx.beginPath();
+          targetCtx.moveTo(-5, 5);
+          targetCtx.quadraticCurveTo(0, -9, 5, 5);
+          targetCtx.closePath();
+          targetCtx.fill();
+          targetCtx.restore();
+        });
+
+        targetCtx.fillStyle = '#db5323';
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, 25, 20, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        targetCtx.fillStyle = '#fff6ec';
+        targetCtx.beginPath();
+        targetCtx.ellipse(-9, -7, 5, 3, -0.25, 0, Math.PI * 2);
+        targetCtx.ellipse(11, -7, 5, 3, 0.25, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        targetCtx.beginPath();
+        targetCtx.ellipse(-13, 5, 8.5, 6.5, -0.2, 0, Math.PI * 2);
+        targetCtx.ellipse(14, 5, 8.5, 6.5, 0.2, 0, Math.PI * 2);
+        targetCtx.ellipse(1, 6, 9, 7, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        targetCtx.fillStyle = '#9e3110';
+        targetCtx.beginPath();
+        targetCtx.ellipse(-9, 6, 3.2, 5.5, 0.15, 0, Math.PI * 2);
+        targetCtx.ellipse(11, 6, 3.2, 5.5, -0.15, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        // Глаза
+        targetCtx.fillStyle = '#1c0d06';
+        targetCtx.strokeStyle = '#1c0d06';
+        targetCtx.lineWidth = 2.2;
+        if (panda.cheerTimer > 0) {
+          targetCtx.beginPath();
+          targetCtx.arc(-9, -1, 4, Math.PI, 0);
+          targetCtx.stroke();
+          targetCtx.beginPath();
+          targetCtx.arc(11, -1, 4, Math.PI, 0);
+          targetCtx.stroke();
+        } else if (panda.isBlinking) {
+          targetCtx.beginPath();
+          targetCtx.moveTo(-13, -1);
+          targetCtx.lineTo(-5, -1);
+          targetCtx.moveTo(7, -1);
+          targetCtx.lineTo(15, -1);
+          targetCtx.stroke();
+        } else {
+          targetCtx.beginPath();
+          targetCtx.arc(-9, -1, 3.2, 0, Math.PI * 2);
+          targetCtx.arc(11, -1, 3.2, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.fillStyle = '#ffffff';
+          targetCtx.beginPath();
+          targetCtx.arc(-10, -2, 1.1, 0, Math.PI * 2);
+          targetCtx.arc(10, -2, 1.1, 0, Math.PI * 2);
+          targetCtx.fill();
+        }
+
+        targetCtx.fillStyle = '#241008';
+        targetCtx.beginPath();
+        targetCtx.ellipse(1, 4.5, 3.3, 2.3, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+
+        targetCtx.strokeStyle = '#4a1e0e';
+        targetCtx.lineWidth = 1.6;
+        targetCtx.beginPath();
+        targetCtx.arc(-1.5, 7.5, 2.6, 0.1, Math.PI * 0.9);
+        targetCtx.arc(3.5, 7.5, 2.6, 0.1, Math.PI * 0.9);
+        targetCtx.stroke();
+
+        // Головные уборы персонажей
+        if (pandaSkin === 'samurai_tea') {
+          // Соломенная коническая шляпа каса
+          targetCtx.fillStyle = '#e3b254';
+          targetCtx.strokeStyle = '#7d5014';
+          targetCtx.lineWidth = 1.8;
+          targetCtx.beginPath();
+          targetCtx.moveTo(-34, -14);
+          targetCtx.quadraticCurveTo(0, -36, 34, -14);
+          targetCtx.quadraticCurveTo(0, -10, -34, -14);
+          targetCtx.closePath();
+          targetCtx.fill();
+          targetCtx.stroke();
+        } else if (pandaSkin === 'royal_panda') {
+          // Золотая корона с рубином
+          targetCtx.fillStyle = '#ffd24c';
+          targetCtx.strokeStyle = '#8c5808';
+          targetCtx.lineWidth = 1.6;
+          targetCtx.beginPath();
+          targetCtx.moveTo(-13, -17);
+          targetCtx.lineTo(-15, -30);
+          targetCtx.lineTo(-6, -23);
+          targetCtx.lineTo(0, -33);
+          targetCtx.lineTo(6, -23);
+          targetCtx.lineTo(15, -30);
+          targetCtx.lineTo(13, -17);
+          targetCtx.closePath();
+          targetCtx.fill();
+          targetCtx.stroke();
+
+          targetCtx.fillStyle = '#e62e4d';
+          targetCtx.beginPath();
+          targetCtx.arc(0, -21, 2.5, 0, Math.PI * 2);
+          targetCtx.fill();
+        } else if (pandaSkin === 'star_pandas') {
+          // Сияющая звёздочка над головой
+          targetCtx.fillStyle = '#ffe66d';
+          targetCtx.beginPath();
+          targetCtx.arc(0, -27 + Math.sin(timeVal * 4) * 2, 4, 0, Math.PI * 2);
+          targetCtx.fill();
+        }
+
+        targetCtx.restore();
+        targetCtx.restore();
+      }
+
+      function drawAmbientParticles() {
+        gameState.ambientParticles.forEach(p => {
+          ctx.save();
+          if (p.kind === 'firefly') {
+            const glowAlpha = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(elapsedTime * 3.5 + p.phase));
+            const g = ctx.createRadialGradient(p.x, p.y, 0.5, p.x, p.y, p.size * 3.5);
+            g.addColorStop(0, `rgba(220, 255, 130, ${glowAlpha})`);
+            g.addColorStop(1, 'rgba(220, 255, 130, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * 3.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (p.kind === 'snow') {
+            ctx.fillStyle = 'rgba(240, 250, 255, 0.8)';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (p.kind === 'petal') {
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = 0.82;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.size, p.size * 0.52, 0, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = 0.78;
+            if (p.isMaple) {
+              ctx.beginPath();
+              ctx.moveTo(0, -p.size);
+              ctx.lineTo(p.size * 0.35, -p.size * 0.25);
+              ctx.lineTo(p.size, -p.size * 0.2);
+              ctx.lineTo(p.size * 0.4, p.size * 0.25);
+              ctx.lineTo(p.size * 0.6, p.size * 0.85);
+              ctx.lineTo(0, p.size * 0.45);
+              ctx.lineTo(-p.size * 0.6, p.size * 0.85);
+              ctx.lineTo(-p.size * 0.4, p.size * 0.25);
+              ctx.lineTo(-p.size, -p.size * 0.2);
+              ctx.lineTo(-p.size * 0.35, -p.size * 0.25);
+              ctx.closePath();
+              ctx.fill();
+            } else {
+              ctx.beginPath();
+              ctx.ellipse(0, 0, p.size * 1.15, p.size * 0.34, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+        });
+      }
+
+      // 3. Отрисовка подсказки (золотая дуга между колбами)
+      function drawHintArrow(hint) {
+        const src = gameState.bottles[hint.fromIdx];
+        const dst = gameState.bottles[hint.toIdx];
+        if (!src || !dst) return;
+
+        const { h } = gameState.bottleGeom;
+        const startX = src.x;
+        const startY = src.y - h * 0.58;
+        const endX = dst.x;
+        const endY = dst.y - h * 0.58;
+        const midX = (startX + endX) * 0.5;
+        const midY = Math.min(startY, endY) - 42 + Math.sin(elapsedTime * 6) * 5;
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 224, 115, 0.88)';
+        ctx.lineWidth = 3.5;
+        ctx.setLineDash([8, 6]);
+        ctx.lineDashOffset = -elapsedTime * 35;
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.quadraticCurveTo(midX, midY, endX, endY);
+        ctx.stroke();
+
+        // Наконечник стрелки
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ffe073';
+        ctx.beginPath();
+        ctx.arc(endX, endY, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 4. Отрисовка струи переливающейся жидкости
+      function drawPouringStream(pour) {
+        const src = gameState.bottles[pour.fromIdx];
+        const dst = gameState.bottles[pour.toIdx];
+        const { w, h } = gameState.bottleGeom;
+        const colorObj = LIQUID_PALETTE[pour.color];
+
+        const neckDist = h * 0.52;
+        const spoutX = src.x + Math.sin(src.angle) * neckDist;
+        const spoutY = src.y - Math.cos(src.angle) * neckDist;
+
+        const currentDstUnits = pour.initialDstCount + pour.transferred;
+        const fillRatio = clamp(currentDstUnits / BOTTLE_CAPACITY, 0.05, 0.98);
+        const targetY = dst.y + h * 0.44 - fillRatio * (h * 0.74);
+        const targetX = dst.x;
+
+        ctx.save();
+        const streamGrad = ctx.createLinearGradient(spoutX, spoutY, targetX, targetY);
+        streamGrad.addColorStop(0, colorObj.top);
+        streamGrad.addColorStop(0.6, colorObj.mid);
+        streamGrad.addColorStop(1, colorObj.top);
+
+        ctx.strokeStyle = streamGrad;
+        ctx.lineCap = 'round';
+        const streamWidth = clamp(w * 0.14, 5, 10);
+        ctx.lineWidth = streamWidth;
+
+        const ctrlX = lerp(spoutX, targetX, 0.45) + pour.dir * 8;
+        const ctrlY = lerp(spoutY, targetY, 0.25);
+
+        ctx.beginPath();
+        ctx.moveTo(spoutX, spoutY);
+        ctx.quadraticCurveTo(ctrlX, ctrlY, targetX, targetY);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+        ctx.lineWidth = streamWidth * 0.32;
+        ctx.beginPath();
+        ctx.moveTo(spoutX, spoutY);
+        ctx.quadraticCurveTo(ctrlX - 1.5, ctrlY, targetX, targetY);
+        ctx.stroke();
+
+        ctx.fillStyle = colorObj.foam;
+        ctx.beginPath();
+        ctx.ellipse(targetX, targetY, streamWidth * 1.15, 3.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 5. Отрисовка бутылки с учётом выбранного скина
+      function drawBottleOnContext(targetCtx, bottle, geom, bottleSkin, isSelected, isHinted, timeVal, idx = 0) {
+        const { w, h } = geom;
+
+        targetCtx.save();
+        targetCtx.translate(bottle.x, bottle.y);
+
+        // Аура выбора, подсказки или завершённости
+        if (isSelected || isHinted || bottle.completed) {
+          const glowColor = bottle.completed
+            ? 'rgba(155, 224, 102, 0.32)'
+            : isHinted
+            ? 'rgba(255, 224, 102, 0.45)'
+            : 'rgba(255, 200, 105, 0.38)';
+          const glow = targetCtx.createRadialGradient(0, 0, w * 0.2, 0, 0, h * 0.72);
+          glow.addColorStop(0, glowColor);
+          glow.addColorStop(1, 'rgba(255, 200, 105, 0)');
+          targetCtx.fillStyle = glow;
+          targetCtx.beginPath();
+          targetCtx.arc(0, 0, h * 0.72, 0, Math.PI * 2);
+          targetCtx.fill();
+        }
+
+        targetCtx.rotate(bottle.angle);
+
+        // Функция контура для разных форм скинов бутылок
+        const traceBottlePath = (inset = 0) => {
+          const bw = w - inset * 2;
+          const bh = h - inset * 2;
+          const halfW = bw * 0.5;
+          const neckW = bw * 0.54;
+          const halfNeck = neckW * 0.5;
+          const topY = -bh * 0.5;
+          const botY = bh * 0.5;
+
+          targetCtx.beginPath();
+          if (bottleSkin === 'bamboo_vessel') {
+            // Прямой цилиндрический бамбуковый сосуд
+            const r = bw * 0.16;
+            targetCtx.roundRect(-halfW * 0.9, topY, bw * 0.9, bh, r);
+          } else if (bottleSkin === 'sakura_lantern') {
+            // Пузатый округлый фонарик сакуры
+            const shoulderY = topY + bh * 0.22;
+            targetCtx.moveTo(-halfNeck, topY);
+            targetCtx.lineTo(halfNeck, topY);
+            targetCtx.lineTo(halfNeck, shoulderY);
+            targetCtx.bezierCurveTo(halfW * 1.28, shoulderY + bh * 0.15, halfW * 1.22, botY - bh * 0.08, halfW * 0.65, botY);
+            targetCtx.lineTo(-halfW * 0.65, botY);
+            targetCtx.bezierCurveTo(-halfW * 1.22, botY - bh * 0.08, -halfW * 1.28, shoulderY + bh * 0.15, -halfNeck, shoulderY);
+            targetCtx.closePath();
+          } else {
+            // Классическая колба и хрустальный кувшин
+            const shoulderTopY = topY + bh * 0.16;
+            const shoulderBotY = topY + bh * 0.27;
+            const cornerR = bottleSkin === 'royal_crystal' ? bw * 0.18 : bw * 0.34;
+            targetCtx.moveTo(-halfNeck, topY);
+            targetCtx.lineTo(halfNeck, topY);
+            targetCtx.lineTo(halfNeck, shoulderTopY);
+            targetCtx.bezierCurveTo(halfNeck, shoulderBotY * 0.85, halfW, shoulderBotY * 0.9, halfW, shoulderBotY);
+            targetCtx.lineTo(halfW, botY - cornerR);
+            targetCtx.quadraticCurveTo(halfW, botY, halfW - cornerR, botY);
+            targetCtx.lineTo(-halfW + cornerR, botY);
+            targetCtx.quadraticCurveTo(-halfW, botY, -halfW, botY - cornerR);
+            targetCtx.lineTo(-halfW, shoulderBotY);
+            targetCtx.bezierCurveTo(-halfW, shoulderBotY * 0.9, -halfNeck, shoulderBotY * 0.85, -halfNeck, shoulderTopY);
+            targetCtx.closePath();
+          }
+        };
+
+        // Внешний декор скинов до заливки стекла
+        if (bottleSkin === 'classic_panda' || bottleSkin === 'royal_crystal') {
+          const earColor = bottleSkin === 'royal_crystal' ? 'rgba(255, 215, 95, 0.38)' : 'rgba(255, 225, 195, 0.18)';
+          const earStroke = bottleSkin === 'royal_crystal' ? 'rgba(255, 224, 120, 0.85)' : 'rgba(255, 235, 210, 0.52)';
+          [-1, 1].forEach(side => {
+            targetCtx.save();
+            targetCtx.translate(side * w * 0.33, -h * 0.31);
+            targetCtx.rotate(side * 0.42);
+            targetCtx.fillStyle = earColor;
+            targetCtx.strokeStyle = earStroke;
+            targetCtx.lineWidth = 1.6;
+            targetCtx.beginPath();
+            targetCtx.moveTo(-w * 0.11, h * 0.03);
+            targetCtx.quadraticCurveTo(0, -h * 0.065, w * 0.11, h * 0.03);
+            targetCtx.closePath();
+            targetCtx.fill();
+            targetCtx.stroke();
+            targetCtx.restore();
+          });
+        } else if (bottleSkin === 'bamboo_vessel') {
+          // Бамбуковые листочки сбоку сосуда
+          targetCtx.save();
+          targetCtx.translate(w * 0.44, -h * 0.25);
+          targetCtx.fillStyle = '#79bd42';
+          targetCtx.beginPath();
+          targetCtx.ellipse(8, -4, 11, 4, -0.4, 0, Math.PI * 2);
+          targetCtx.ellipse(7, 4, 10, 3.8, 0.35, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.restore();
+        }
+
+        // Подложка стекла / бамбука
+        traceBottlePath(0);
+        targetCtx.fillStyle = bottleSkin === 'bamboo_vessel'
+          ? 'rgba(42, 72, 26, 0.48)'
+          : 'rgba(30, 16, 8, 0.36)';
+        targetCtx.fill();
+
+        // Отрисовка слоёв жидкости внутри
+        targetCtx.save();
+        traceBottlePath(3.5);
+        targetCtx.clip();
+
+        const pour = gameState.activePour;
+        let displayLayers = bottle.layers.map(c => ({ color: c, amount: 1 }));
+
+        if (pour && pour.phase === 'pouring') {
+          if (pour.fromIdx === idx && pour.transferred > 0) {
+            let rem = pour.transferred;
+            for (let i = displayLayers.length - 1; i >= 0 && rem > 0; i--) {
+              const take = Math.min(displayLayers[i].amount, rem);
+              displayLayers[i].amount -= take;
+              rem -= take;
+            }
+            displayLayers = displayLayers.filter(item => item.amount > 0.001);
+          } else if (pour.toIdx === idx && pour.transferred > 0) {
+            displayLayers.push({ color: pour.color, amount: pour.transferred });
+          }
+        }
+
+        const innerBotY = h * 0.5 - 4;
+        const maxLiquidH = h * 0.74;
+        const unitH = maxLiquidH / BOTTLE_CAPACITY;
+        const surfaceTilt = -bottle.angle * 0.75 + bottle.sloshAngle * 0.14;
+        const tanTilt = Math.tan(clamp(surfaceTilt, -0.75, 0.75));
+
+        let accUnits = 0;
+        displayLayers.forEach((seg, segIdx) => {
+          const segH = seg.amount * unitH;
+          const yBot = innerBotY - accUnits * unitH;
+          const yTop = yBot - segH;
+          const isTopLayer = segIdx === displayLayers.length - 1;
+          const pal = LIQUID_PALETTE[seg.color] || LIQUID_PALETTE[0];
+
+          const grad = targetCtx.createLinearGradient(0, yTop, 0, yBot);
+          grad.addColorStop(0, pal.top);
+          grad.addColorStop(0.55, pal.mid);
+          grad.addColorStop(1, pal.bottom);
+
+          targetCtx.fillStyle = grad;
+          targetCtx.beginPath();
+          const leftSlope = isTopLayer ? tanTilt * (-w * 0.75) : 0;
+          const rightSlope = isTopLayer ? tanTilt * (w * 0.75) : 0;
+          const waveOffset = isTopLayer ? Math.sin(timeVal * 7 + idx) * 1.4 : 0;
+
+          targetCtx.moveTo(-w * 0.8, yBot + 2);
+          targetCtx.lineTo(w * 0.8, yBot + 2);
+          targetCtx.lineTo(w * 0.8, yTop + rightSlope);
+          if (isTopLayer) {
+            targetCtx.quadraticCurveTo(0, yTop + waveOffset, -w * 0.8, yTop + leftSlope);
+          } else {
+            targetCtx.lineTo(-w * 0.8, yTop);
+          }
+          targetCtx.closePath();
+          targetCtx.fill();
+
+          if (isTopLayer) {
+            targetCtx.strokeStyle = pal.foam;
+            targetCtx.lineWidth = 2.4;
+            targetCtx.beginPath();
+            targetCtx.moveTo(-w * 0.75, yTop + leftSlope);
+            targetCtx.quadraticCurveTo(0, yTop + waveOffset, w * 0.75, yTop + rightSlope);
+            targetCtx.stroke();
+          }
+
+          accUnits += seg.amount;
+        });
+
+        // Микропузырьки
+        if (accUnits > 0.15 && bottle.bubbles) {
+          const totalLiqH = accUnits * unitH;
+          targetCtx.fillStyle = 'rgba(255, 255, 255, 0.34)';
+          bottle.bubbles.forEach(bub => {
+            const bx = bub.rx * (w * 0.72) + Math.sin(timeVal * 3 + bub.wobble) * 2;
+            const by = innerBotY - bub.ry * (totalLiqH * 0.92);
+            if (by < innerBotY - 4) {
+              targetCtx.beginPath();
+              targetCtx.arc(bx, by, bub.r, 0, Math.PI * 2);
+              targetCtx.fill();
+            }
+          });
+        }
+
+        targetCtx.restore();
+
+        // Уникальные узоры поверх стекла для каждого скина
+        if (bottleSkin === 'bamboo_vessel') {
+          // Горизонтальные коленца бамбука
+          targetCtx.strokeStyle = 'rgba(182, 232, 130, 0.65)';
+          targetCtx.lineWidth = 2.4;
+          [-h * 0.16, h * 0.16].forEach(ry => {
+            targetCtx.beginPath();
+            targetCtx.moveTo(-w * 0.45, ry);
+            targetCtx.lineTo(w * 0.45, ry);
+            targetCtx.stroke();
+          });
+        } else if (bottleSkin === 'sakura_lantern') {
+          // Цветок сакуры в центре колбы
+          targetCtx.save();
+          targetCtx.translate(0, h * 0.12);
+          targetCtx.fillStyle = 'rgba(255, 215, 230, 0.45)';
+          for (let p = 0; p < 5; p++) {
+            targetCtx.rotate((Math.PI * 2) / 5);
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, -w * 0.1, w * 0.055, w * 0.09, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+          }
+          targetCtx.restore();
+        } else {
+          // Гравировка лапки красной панды
+          targetCtx.save();
+          targetCtx.translate(0, h * 0.14);
+          targetCtx.fillStyle = 'rgba(255, 245, 232, 0.18)';
+          targetCtx.beginPath();
+          targetCtx.ellipse(0, 3, w * 0.11, w * 0.08, 0, 0, Math.PI * 2);
+          targetCtx.fill();
+          [-0.12, -0.04, 0.04, 0.12].forEach((ox, ti) => {
+            const oy = ti === 1 || ti === 2 ? -5.5 : -3.5;
+            targetCtx.beginPath();
+            targetCtx.arc(ox * w, oy, w * 0.032, 0, Math.PI * 2);
+            targetCtx.fill();
+          });
+          targetCtx.restore();
+        }
+
+        // Стеклянный контур
+        traceBottlePath(0);
+        targetCtx.strokeStyle = isSelected || isHinted
+          ? 'rgba(255, 224, 150, 0.95)'
+          : bottle.completed
+          ? 'rgba(182, 238, 134, 0.92)'
+          : bottleSkin === 'royal_crystal' || bottleSkin === 'sakura_lantern'
+          ? 'rgba(255, 215, 130, 0.82)'
+          : bottleSkin === 'bamboo_vessel'
+          ? 'rgba(165, 224, 115, 0.8)'
+          : 'rgba(255, 238, 215, 0.68)';
+        targetCtx.lineWidth = isSelected || isHinted ? 2.8 : 2.2;
+        targetCtx.stroke();
+
+        // Ободок горлышка
+        const neckW = bottleSkin === 'bamboo_vessel' ? w * 0.92 : w * 0.58;
+        targetCtx.fillStyle = bottleSkin === 'royal_crystal'
+          ? 'rgba(255, 215, 110, 0.45)'
+          : 'rgba(255, 240, 220, 0.25)';
+        targetCtx.strokeStyle = bottleSkin === 'royal_crystal'
+          ? 'rgba(255, 225, 130, 0.9)'
+          : 'rgba(255, 240, 220, 0.8)';
+        targetCtx.lineWidth = 1.8;
+        targetCtx.beginPath();
+        targetCtx.roundRect(-neckW * 0.5, -h * 0.5 - 3, neckW, 6, 3);
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Вертикальный блик
+        targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.36)';
+        targetCtx.lineWidth = clamp(w * 0.065, 2.5, 4.5);
+        targetCtx.lineCap = 'round';
+        targetCtx.beginPath();
+        targetCtx.moveTo(-w * 0.32, -h * 0.18);
+        targetCtx.lineTo(-w * 0.32, h * 0.34);
+        targetCtx.stroke();
+
+        // Пробка при завершении
+        if (bottle.corkProgress > 0.02) {
+          const cp = bottle.corkProgress;
+          const corkY = -h * 0.5 - 14 * (1 - cp) - 3;
+          targetCtx.save();
+          targetCtx.globalAlpha = cp;
+          targetCtx.translate(0, corkY);
+
+          const corkW = neckW * 0.8;
+          const corkH = 14;
+          const corkGrad = targetCtx.createLinearGradient(-corkW * 0.5, 0, corkW * 0.5, 0);
+          corkGrad.addColorStop(0, '#9c5a2b');
+          corkGrad.addColorStop(0.5, '#d48c4e');
+          corkGrad.addColorStop(1, '#7a411a');
+
+          targetCtx.fillStyle = corkGrad;
+          targetCtx.strokeStyle = '#4f260c';
+          targetCtx.lineWidth = 1.5;
+          targetCtx.beginPath();
+          targetCtx.roundRect(-corkW * 0.5, -corkH * 0.5, corkW, corkH, 4);
+          targetCtx.fill();
+          targetCtx.stroke();
+          targetCtx.restore();
+        }
+
+        targetCtx.restore();
+      }
+
+      function drawParticles() {
+        gameState.particles.forEach(p => {
+          const alpha = clamp(p.life / p.maxLife, 0, 1);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          if (p.type === 'droplet') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.font = `${Math.round(p.size)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(p.char, 0, 0);
+          }
+          ctx.restore();
+        });
+      }
+
+      // --- ГЛАВНЫЙ ИГРОВОЙ ЦИКЛ ---
+      function gameLoop(now) {
+        const dt = Math.min((now - lastTime) / 1000, 0.05);
+        lastTime = now;
+
+        update(dt);
+        render();
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // --- СОБЫТИЯ МЫШИ, КАСАНИЙ И ИНТЕРФЕЙСА ---
+      function handleResize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        layoutBottles(gameState.activePour === null);
+      }
+
+      function getPointerPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        };
+      }
+
+      function onCanvasPointerDown(e) {
+        if (e.button !== undefined && e.button !== 0) return;
+        const pos = getPointerPos(e);
+        const { w, h } = gameState.bottleGeom;
+
+        const hitPadX = w * 0.25;
+        const hitPadY = h * 0.12;
+
+        let clickedIdx = -1;
+        let bestDist = Infinity;
+
+        gameState.bottles.forEach((b, idx) => {
+          const dx = Math.abs(pos.x - b.x);
+          const dy = Math.abs(pos.y - b.y);
+          if (dx <= w * 0.5 + hitPadX && dy <= h * 0.5 + hitPadY) {
+            const dist = dx * dx + dy * dy;
+            if (dist < bestDist) {
+              bestDist = dist;
+              clickedIdx = idx;
+            }
+          }
+        });
+
+        if (clickedIdx !== -1) {
+          handleBottleClick(clickedIdx);
+        } else if (gameState.selectedIndex !== -1 && !gameState.activePour) {
+          gameState.bottles[gameState.selectedIndex].sloshVel -= 2.0;
+          gameState.selectedIndex = -1;
+          sound.playDeselect();
+        }
+      }
+
+      canvas.addEventListener('pointerdown', onCanvasPointerDown);
+      window.addEventListener('resize', handleResize);
+
+      // Кнопки управления и бустеров
+      undoBtn.addEventListener('click', undoLastMove);
+      restartBtn.addEventListener('click', restartCurrentLevel);
+      hintBtn.addEventListener('click', useHintBooster);
+      shuffleBtn.addEventListener('click', useShuffleBooster);
+      extraBottleBtn.addEventListener('click', useExtraBottleBooster);
+      newLevelBtn.addEventListener('click', () => {
+        if (gameState.activePour) return;
+        sound.playSelect(1.15);
+        generateLevel(gameState.level + 1);
+      });
+
+      // Магазин
+      openShopBtn.addEventListener('click', () => openShop());
+      closeShopBtn.addEventListener('click', closeShop);
+      shopModal.addEventListener('click', (e) => {
+        if (e.target === shopModal) closeShop();
+      });
+      shopTabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          openShop(btn.dataset.shopTab);
+        });
+      });
+
+      soundToggleBtn.addEventListener('click', () => {
+        const isMuted = sound.toggleMute();
+        soundIcon.textContent = isMuted ? '🔇' : '🔊';
+        showToast(isMuted ? 'Звук выключен' : 'Звук включён');
+      });
+
+      modalReplayBtn.addEventListener('click', restartCurrentLevel);
+      modalNextBtn.addEventListener('click', () => {
+        sound.playSelect(1.2);
+        generateLevel(gameState.level + 1);
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if ((e.key === 'z' || e.key === 'Z' || e.key === 'я' || e.key === 'Я') && !e.altKey) {
+          undoLastMove();
+        }
+      });
+
+      // --- ЗАПУСК ИГРЫ ---
+      window.addEventListener('load', () => {
+        handleResize();
+        initScenery();
+        generateLevel(saveData.level);
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+      });
+    })();
+  </script>
+</body>
+</html>
